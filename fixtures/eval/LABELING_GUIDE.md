@@ -67,6 +67,20 @@ addresses encryption, not access control or backups)?
   is coverage, not relevance. Reviewer action: verify the system's answer explicitly
   names what's unaddressed rather than silently answering only the covered part.
 
+  Two flavors here too, and they want to be told apart even though both get the same
+  label: **compound-question** partials (the question itself has multiple clauses,
+  e.g. "do you encrypt data at rest and in transit, and how often are keys rotated" —
+  evidence covers some clauses, not others) versus **scope-mismatch** partials (a
+  single-topic question broader than what's documented, e.g. "how do you protect
+  customer data" when only encryption is documented). Real CAIQ questions are often
+  compound — three clauses joined by "and" covering distinct controls — and that's
+  worth keeping some of deliberately, since it's realistic. But don't let compound-
+  question artifacts dominate the `ANSWERED_PARTIAL` bucket: the two failure modes
+  want different fixes (compound → better question splitting; scope-mismatch → better
+  retrieval/corpus coverage), and if the bucket fills with one flavor the eval will
+  look like it's measuring "partial answers" in general when it's really only
+  measuring one specific cause. Aim for roughly half and half of the 4 `PARTIAL` slots.
+
 **4. Otherwise** — the evidence directly and fully addresses the question as asked.
 
 - If it confirms the control/practice exists → label `ANSWERED_AFFIRMS`.
@@ -116,3 +130,24 @@ pentesting cadence) rather than rewriting or cherry-picking questions to fit the
 documents that already exist. Bending the corpus toward real question coverage is
 correct; bending real questions toward the corpus reintroduces the mirror problem this
 whole methodology exists to avoid.
+
+## Sourcing questions: CAIQ/VSAQ
+
+**Parse the actual source file; do not scrape a summary/paraphrase page.** CSA
+distributes CAIQ as an xlsx download — question text lives in a specific column
+alongside a control ID and domain grouping. A webpage that summarizes or paraphrases
+CAIQ content is one hop further into the mirror problem this methodology exists to
+avoid: the point of an external source is exact human-written phrasing, and a
+paraphrase (even a human-written one, even not written by this project) throws that
+away. Download the real xlsx and parse it the same way `questionnaire/parse_xlsx.py`
+would — don't transcribe from memory or from a page that already reworded it. VSAQ is
+JSON-backed (a web app), which is more directly parseable but has its own structure to
+read correctly rather than skim.
+
+**Record provenance per question.** Every fixture question carries its source control
+ID (e.g. CAIQ `IAM-02`) alongside the question text. Two reasons: it's the proof the
+question wasn't generated, and it's how a bad-fit question gets traced back to what
+was actually pulled instead of leaving it ambiguous whether the text was edited along
+the way. Fixture row shape: `{source_id, question_text, expected_label, notes}` —
+`notes` is where the calibration/compound-vs-scope-mismatch flavor and any labeling
+rationale goes.
