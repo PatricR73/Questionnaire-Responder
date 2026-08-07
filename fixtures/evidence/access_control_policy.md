@@ -1,3 +1,7 @@
+> **SYNTHETIC TEST FIXTURE — NOT A REAL DOCUMENT.** This file was invented for this
+> project's test fixtures. It does not describe the policies of any real organization
+> and must not be treated as evidence about any company's actual security controls.
+
 # Access Control Policy
 
 ## Authentication

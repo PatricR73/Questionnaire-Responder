@@ -1,14 +1,30 @@
-"""One-off script to generate the sample questionnaire fixture. Run once after deps are installed."""
+"""One-off script to generate the sample questionnaire fixture. Run once after deps are installed.
+
+SYNTHETIC TEST FIXTURE — the content this script generates is invented for this
+project's tests. It does not represent any real company's questionnaire or vendor.
+"""
 
 from pathlib import Path
 
 from openpyxl import Workbook
+from openpyxl.comments import Comment
 from openpyxl.styles import Font
 from openpyxl.worksheet.datavalidation import DataValidation
 
 wb = Workbook()
 ws = wb.active
 ws.title = "Questionnaire"
+
+wb.properties.title = "SYNTHETIC TEST FIXTURE - Sample Vendor Security Questionnaire"
+wb.properties.description = (
+    "Not a real questionnaire. Invented for this project's automated tests; does not "
+    "represent any real company or vendor."
+)
+ws["A1"].comment = Comment(
+    "SYNTHETIC TEST FIXTURE — NOT A REAL QUESTIONNAIRE. Invented for this project's "
+    "tests; does not represent any real company's questionnaire or vendor.",
+    "Questionnaire Responder",
+)
 
 headers = ["Section", "Question", "Vendor Response", "Compliance Status"]
 for col, text in enumerate(headers, start=1):

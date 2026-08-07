@@ -1,10 +1,21 @@
-"""One-off script to generate the DOCX evidence fixture. Run once after deps are installed."""
+"""One-off script to generate the DOCX evidence fixture. Run once after deps are installed.
+
+SYNTHETIC TEST FIXTURE — the content this script generates is invented for this
+project's tests. It does not describe any real organization's policies.
+"""
 
 from pathlib import Path
 
 import docx
 
 doc = docx.Document()
+
+doc.add_paragraph(
+    "SYNTHETIC TEST FIXTURE — NOT A REAL DOCUMENT. This file was invented for this "
+    "project's test fixtures. It does not describe the policies of any real "
+    "organization and must not be treated as evidence about any company's actual "
+    "security controls."
+)
 
 doc.add_heading("Business Continuity Plan", level=1)
 
