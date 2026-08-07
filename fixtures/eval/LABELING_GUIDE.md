@@ -31,6 +31,16 @@ sentence in response (not even a hedged, partial one), the answer is no.
   different failure modes with different reviewer actions (see below), and collapsing
   them erases exactly the distinction the confidence cross-check exists to catch.
 
+  Two flavors of `NOT_FOUND`, and the fixture set needs both — see the target mix
+  below: an **easy** case (evidence has nothing topically nearby at all — a fully
+  off-topic CAIQ question against this corpus will typically retrieve at ~0.44+
+  distance, comfortably past `WEAK_MATCH_DISTANCE = 0.3`), and a **calibration** case
+  (evidence has a genuine near-miss — a control that's adjacent but distinct from what
+  was asked, retrieving close to the threshold, the way the encryption-in-transit
+  question's real match at 0.163 sat close to the encryption-at-rest distractor at
+  0.177). Only the calibration case actually exercises whether the threshold does
+  anything; the easy case would pass with almost any threshold value.
+
 **2. Does the evidence contradict itself on this question** (two passages, or two
 documents, giving incompatible answers to the same control)?
 
@@ -39,8 +49,11 @@ documents, giving incompatible answers to the same control)?
   The system has no dedicated handling for this today (`self_confidence` has no
   "contradictory" value); include these questions anyway as a stress test, and score
   the system leniently for now — the bar is "did it avoid confidently asserting one
-  side," not an exact status match. Flag this gap for a future slice rather than
-  trying to retrofit a code-level fix while writing labels.
+  side," not an exact status match. Do not rush to implement handling for this: two
+  fixtures of contradictory evidence is not enough signal to design a resolution
+  strategy, and the honest v1 behavior is probably "flag for a human" rather than the
+  system picking a side on its own. Flag this gap for a future slice instead of
+  retrofitting a code-level fix while writing labels.
 
 **3. Does the question have multiple explicit parts, or ask about a broader scope than
 the evidence covers** (compound question: "do you do X, and how often is Y done" where
@@ -82,7 +95,17 @@ about retrieval or answer quality. Target mix, decided before fetching:
 - 5x `ANSWERED_AFFIRMS`
 - 3x `ANSWERED_DENIES`
 - 4x `ANSWERED_PARTIAL`
-- 6x `NOT_FOUND`
+- 6x `NOT_FOUND`, split as:
+  - 4x easy (no nearby evidence at all — fully unrelated to anything the corpus covers)
+  - 2x **calibration** (a genuine near-miss: a control adjacent to but distinct from
+    what the corpus documents, so retrieval lands close to `WEAK_MATCH_DISTANCE`
+    rather than far past it). Concretely: pick CAIQ/VSAQ questions whose topic the
+    corpus covers *adjacently but not actually* — e.g. a question about vulnerability
+    disclosure when the corpus documents patch management, or a question about
+    subprocessor audits when the corpus documents vendor onboarding. Without these
+    two, the eval only samples the easy end of the distance distribution and would
+    report the threshold as well-calibrated when it's only been tested where it can't
+    fail.
 - 2x `AMBIGUOUS_EVIDENCE`
 
 To hit this: select CAIQ/VSAQ questions to fit the mix, and where there aren't enough
