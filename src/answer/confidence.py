@@ -9,13 +9,17 @@ Two independent checks can only ever downgrade confidence, never upgrade it:
    encryption-in-transit question pulled back an encryption-at-rest passage) and the
    answer should not be trusted at face value.
 
-WEAK_MATCH_DISTANCE is an interim threshold, not yet tuned against a real labeled set —
-that's the slice-2 eval harness's job once one exists. It was set to 0.3 from one data
-point: on the fixture evidence base, the five real questions' best-matching chunk
-distance clustered at 0.14-0.20, while a question with no supporting evidence at all
-landed at 0.44 — a wide, clean gap. 0.5 (the original placeholder) sat above both
-clusters and let the no-evidence case through as a "confident" match. Treat 0.3 as
-provisional until the eval harness validates it against more than one example.
+WEAK_MATCH_DISTANCE is an UNVALIDATED PLACEHOLDER, not a tuned finding. It was set to
+0.3 by fitting a single line between two data points from a 6-question, 2-document
+fixture set: one no-evidence question at distance ~0.44, and five answerable questions
+clustered at 0.14-0.20 (0.5, the original placeholder, sat above both clusters and let
+the no-evidence case through as "confident"). That is not enough signal to calibrate a
+real threshold, and distance distributions shift as the corpus grows — a value fit to
+two documents will not hold on forty. Do not treat 0.3 as validated, and do not tune it
+further by hand. The slice-2 eval harness must derive this properly: plot best-match
+distance for a real set of known-answerable vs. known-unanswerable questions across a
+representative corpus size, and pick the threshold from where that distribution
+actually separates.
 """
 
 from src.answer.generate import AnswerDraft
