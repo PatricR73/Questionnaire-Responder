@@ -60,6 +60,8 @@ class AnswerDraft:
     cited_sentences: list[str]
     vocab_selection: str | None
     self_confidence: str  # "high" | "low" | "none"
+    input_tokens: int
+    output_tokens: int
 
 
 _ANSWER_TOOL = {
@@ -127,4 +129,6 @@ def generate_answer(
         cited_sentences=result["cited_sentences"],
         vocab_selection=result["vocab_selection"],
         self_confidence=result["self_confidence"],
+        input_tokens=response.usage.input_tokens,
+        output_tokens=response.usage.output_tokens,
     )
