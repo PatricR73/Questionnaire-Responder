@@ -12,6 +12,17 @@ NOT_FOUND, or raise an exception on genuine failure. The caller (pipeline.py) is
 responsible for catching that exception per-row and recording it as ERROR; that keeps
 the per-row fault isolation in one place instead of duplicated in every Answerer.
 
+status captures evidence-presence + processing outcome (was there evidence at all, did
+processing succeed). It deliberately does NOT capture what the evidence says. polarity
+is the separate, orthogonal field for that: AFFIRMS (evidence confirms the
+control/practice exists), DENIES (evidence explicitly states it does NOT — a
+documented negative, e.g. "shared accounts are prohibited"), or PARTIAL (only part of
+the question is addressed). polarity is only meaningful when status is ANSWERED; it's
+None for NOT_FOUND (no evidence to have a polarity) and ERROR. Collapsing a documented
+negative into NOT_FOUND would erase a fact the organization actually stated — "we
+don't do X" and "we never said whether we do X" carry different liability weight, and
+a security questionnaire eval needs to be able to tell them apart.
+
 vocab_selection and input_tokens/output_tokens are carried on AnswerResult in addition
 to the minimum {answer, status, confidence, cited_chunk_ids, provider} contract:
 dropping vocab_selection would silently regress write_xlsx's vocab-column write-back,
@@ -33,6 +44,12 @@ class AnswerStatus:
     ERROR = "ERROR"
 
 
+class AnswerPolarity:
+    AFFIRMS = "affirms"
+    DENIES = "denies"
+    PARTIAL = "partial"
+
+
 @dataclass
 class AnswerResult:
     answer: str
@@ -41,6 +58,7 @@ class AnswerResult:
     cited_chunk_ids: list[str]
     provider: str
     vocab_selection: str | None = None
+    polarity: str | None = None  # AnswerPolarity.AFFIRMS | DENIES | PARTIAL when ANSWERED, else None
     input_tokens: int = 0
     output_tokens: int = 0
 
@@ -93,6 +111,7 @@ class AnthropicAnswerer(Answerer):
             cited_chunk_ids=cited_chunk_ids,
             provider=self.provider_name,
             vocab_selection=draft.vocab_selection,
+            polarity=draft.polarity,
             input_tokens=draft.input_tokens,
             output_tokens=draft.output_tokens,
         )
@@ -101,7 +120,8 @@ class AnthropicAnswerer(Answerer):
 class StubAnswerer(Answerer):
     """No network, no model. Branches on the same WEAK_MATCH_DISTANCE threshold the real
     (AnthropicAnswerer -> cross_check_confidence) path uses, so stub runs exercise the
-    same retrieval-quality boundary as a real run would."""
+    same retrieval-quality boundary as a real run would. Never sets polarity — it has no
+    way to judge whether a chunk affirms or denies anything, only whether one exists."""
 
     provider_name = "stub"
 

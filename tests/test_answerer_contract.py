@@ -9,7 +9,7 @@ import pytest
 
 from src.answer import answerer as answerer_module
 from src.answer import generate as generate_module
-from src.answer.answerer import AnswerResult, AnswerStatus, AnthropicAnswerer, StubAnswerer
+from src.answer.answerer import AnswerPolarity, AnswerResult, AnswerStatus, AnthropicAnswerer, StubAnswerer
 from src.answer.confidence import WEAK_MATCH_DISTANCE
 from src.retrieval.hybrid_search import RetrievedChunk
 
@@ -49,6 +49,7 @@ def test_stub_answerer_below_threshold_answers():
     assert result.cited_chunk_ids == [STRONG_CHUNK.embedding_id]
     assert result.provider == "stub"
     assert STRONG_CHUNK.heading_path in result.answer
+    assert result.polarity is None  # stub never judges polarity, only evidence presence
 
 
 def test_stub_answerer_above_threshold_returns_not_found():
@@ -75,6 +76,7 @@ def test_anthropic_answerer_matches_stub_shape(monkeypatch):
         cited_sentences=["All network traffic is encrypted in transit using TLS 1.2 or higher."],
         vocab_selection="Yes",
         self_confidence="high",
+        polarity=AnswerPolarity.AFFIRMS,
         input_tokens=123,
         output_tokens=45,
     )
@@ -87,8 +89,41 @@ def test_anthropic_answerer_matches_stub_shape(monkeypatch):
     assert result.status == AnswerStatus.ANSWERED
     assert result.confidence == "high"
     assert result.provider == "anthropic"
+    assert result.polarity == AnswerPolarity.AFFIRMS
     assert result.input_tokens == 123
     assert result.output_tokens == 45
+
+
+DENIAL_CHUNK = RetrievedChunk(
+    embedding_id="doc.md::2",
+    source_filename="doc.md",
+    heading_path="Access Control > Authentication",
+    loc_ref="line 7",
+    text="Shared accounts are prohibited.",
+    vector_distance=WEAK_MATCH_DISTANCE - 0.1,
+    combined_score=1.0,
+)
+
+
+def test_anthropic_answerer_preserves_documented_negative(monkeypatch):
+    """A documented 'no' must stay ANSWERED/DENIES, never collapse into NOT_FOUND."""
+    fake_draft = generate_module.AnswerDraft(
+        answer="Shared accounts are prohibited.",
+        supported=True,
+        cited_sentences=["Shared accounts are prohibited."],
+        vocab_selection="No",
+        self_confidence="high",
+        polarity=AnswerPolarity.DENIES,
+        input_tokens=100,
+        output_tokens=20,
+    )
+    monkeypatch.setattr(answerer_module, "generate_answer", lambda *a, **k: fake_draft)
+
+    result = AnthropicAnswerer().answer_question("Do you allow shared accounts?", [DENIAL_CHUNK])
+
+    assert result.status == AnswerStatus.ANSWERED
+    assert result.polarity == AnswerPolarity.DENIES
+    assert result.answer == "Shared accounts are prohibited."
 
 
 def test_anthropic_answerer_without_api_key_raises_not_degrades(monkeypatch):

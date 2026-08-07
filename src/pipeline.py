@@ -139,6 +139,7 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                     answer_text = result.answer
                     vocab_selection = result.vocab_selection
                     self_confidence = result.confidence
+                    polarity = result.polarity
                     cited_chunk_ids = result.cited_chunk_ids
                     sources = [f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence]
                     error_message = None
@@ -151,6 +152,7 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                     answer_text = None
                     vocab_selection = None
                     self_confidence = None
+                    polarity = None
                     sub_question = q.question_text
                     error_message = str(exc)
                     click.echo(f"  row {q.row_index}: ERROR — {error_message}")
@@ -161,6 +163,7 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                 db.record_answer(
                     conn, run_id, q.row_index, q.question_text, sub_question,
                     answer_text, vocab_selection, self_confidence, final_confidence, cited_chunk_ids,
+                    polarity=polarity,
                 )
                 db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
 
@@ -168,6 +171,7 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                     "row_index": q.row_index,
                     "question_text": q.question_text,
                     "final_confidence": final_confidence,
+                    "polarity": polarity,
                     "provider": provider,
                     "answer": answer_text,
                     "error": error_message,

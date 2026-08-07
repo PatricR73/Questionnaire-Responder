@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS answers (
     vocab_selection TEXT,
     self_confidence TEXT,
     final_confidence TEXT NOT NULL,
+    polarity TEXT,
     cited_chunk_ids TEXT
 );
 
@@ -55,11 +56,15 @@ def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
-    try:
-        conn.execute("ALTER TABLE audit_log ADD COLUMN provider TEXT")
-        conn.commit()
-    except sqlite3.OperationalError:
-        pass  # column already exists on a pre-existing dev database
+    for statement in (
+        "ALTER TABLE audit_log ADD COLUMN provider TEXT",
+        "ALTER TABLE answers ADD COLUMN polarity TEXT",
+    ):
+        try:
+            conn.execute(statement)
+            conn.commit()
+        except sqlite3.OperationalError:
+            pass  # column already exists on a pre-existing dev database
     return conn
 
 
@@ -83,11 +88,12 @@ def record_answer(
     self_confidence: str | None,
     final_confidence: str,
     cited_chunk_ids: list[str],
+    polarity: str | None = None,
 ) -> None:
     conn.execute(
         "INSERT INTO answers (run_id, row_index, question_text, sub_question_text, drafted_answer, "
-        "vocab_selection, self_confidence, final_confidence, cited_chunk_ids) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "vocab_selection, self_confidence, final_confidence, polarity, cited_chunk_ids) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             run_id,
             row_index,
@@ -97,6 +103,7 @@ def record_answer(
             vocab_selection,
             self_confidence,
             final_confidence,
+            polarity,
             json.dumps(cited_chunk_ids),
         ),
     )

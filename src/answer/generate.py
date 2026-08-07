@@ -53,6 +53,15 @@ exactly one value copied from that list, chosen only if the evidence clearly sup
 control is missing, only that it is not documented in what you were given. But undocumented is not \
 license to describe it anyway. When genuinely torn between two answers, choose the less committal one.
 
+7. A DOCUMENTED "NO" IS NOT THE SAME AS SILENCE. These are different facts and must be kept distinct: \
+(a) the evidence explicitly states the organization does NOT do something ("shared accounts are \
+prohibited", "we do not offer a public bug bounty program") — this is supported=true, a real answer, \
+and set "polarity" to "denies"; (b) the evidence simply never mentions the topic — this is \
+supported=false, "polarity" null, per rule 1. Never let a documented negative collapse into "not \
+found" — that erases a fact the organization actually stated. When supported=true and the evidence \
+affirms the control/practice exists, set "polarity" to "affirms". When the evidence only partially \
+addresses the question (rule 2), set "polarity" to "partial".
+
 You will be given the question and a set of evidence passages, each labeled with its source document \
 and location. Use only those passages."""
 
@@ -64,6 +73,7 @@ class AnswerDraft:
     cited_sentences: list[str]
     vocab_selection: str | None
     self_confidence: str  # "high" | "low" | "none"
+    polarity: str | None  # "affirms" | "denies" | "partial" when supported, else None
     input_tokens: int
     output_tokens: int
 
@@ -90,8 +100,13 @@ _ANSWER_TOOL = {
                 "enum": ["high", "low", "none"],
                 "description": "Self-assessed confidence: 'none' if unsupported, 'low' if partial, 'high' if fully supported.",
             },
+            "polarity": {
+                "type": ["string", "null"],
+                "enum": ["affirms", "denies", "partial", None],
+                "description": "Only meaningful when supported=true: 'affirms' if the evidence confirms the control/practice exists, 'denies' if the evidence explicitly states it does NOT (a documented negative — not the same as no evidence at all), 'partial' if only part of the question is addressed. Null when supported=false.",
+            },
         },
-        "required": ["supported", "answer", "cited_sentences", "vocab_selection", "self_confidence"],
+        "required": ["supported", "answer", "cited_sentences", "vocab_selection", "self_confidence", "polarity"],
     },
 }
 
@@ -144,6 +159,7 @@ def generate_answer(
         cited_sentences=result["cited_sentences"],
         vocab_selection=result["vocab_selection"],
         self_confidence=result["self_confidence"],
+        polarity=result["polarity"],
         input_tokens=response.usage.input_tokens,
         output_tokens=response.usage.output_tokens,
     )
