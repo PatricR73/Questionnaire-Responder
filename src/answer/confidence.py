@@ -9,15 +9,19 @@ Two independent checks can only ever downgrade confidence, never upgrade it:
    encryption-in-transit question pulled back an encryption-at-rest passage) and the
    answer should not be trusted at face value.
 
-WEAK_MATCH_DISTANCE is a placeholder threshold — it has not been tuned against real
-data. Tuning it against the slice-2 eval harness's hand-scored set is the intended next
-step once there's a labeled sample to tune against.
+WEAK_MATCH_DISTANCE is an interim threshold, not yet tuned against a real labeled set —
+that's the slice-2 eval harness's job once one exists. It was set to 0.3 from one data
+point: on the fixture evidence base, the five real questions' best-matching chunk
+distance clustered at 0.14-0.20, while a question with no supporting evidence at all
+landed at 0.44 — a wide, clean gap. 0.5 (the original placeholder) sat above both
+clusters and let the no-evidence case through as a "confident" match. Treat 0.3 as
+provisional until the eval harness validates it against more than one example.
 """
 
 from src.answer.generate import AnswerDraft
 from src.retrieval.hybrid_search import RetrievedChunk
 
-WEAK_MATCH_DISTANCE = 0.5
+WEAK_MATCH_DISTANCE = 0.3
 
 
 def cross_check_confidence(draft: AnswerDraft, evidence_chunks: list[RetrievedChunk]) -> str:
