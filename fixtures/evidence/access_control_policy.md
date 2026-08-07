@@ -16,7 +16,8 @@ every 180 days. Shared accounts are prohibited.
 
 All customer data stored in production databases is encrypted at rest using AES-256.
 Encryption keys are managed via a dedicated key management service and rotated
-annually.
+annually. Customers do not have the ability to manage their own encryption keys; all
+key management is performed internally by the security team.
 
 ### Encryption in transit
 
