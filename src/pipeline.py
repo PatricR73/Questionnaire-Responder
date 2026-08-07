@@ -5,10 +5,14 @@ Usage:
     python -m src.pipeline answer --questionnaire fixtures/questionnaire_sample.xlsx --output out/filled.xlsx --limit 5
     python -m src.pipeline answer --questionnaire fixtures/questionnaire_sample.xlsx --output out/filled.xlsx --provider stub
 
-`answer` saves the workbook incrementally (every SAVE_EVERY_N_ROWS rows, plus always at
-the end) and appends one JSON line per processed row to a sidecar .jsonl file next to
-the output. A crash partway through a run therefore loses at most a few rows' worth of
-paid API calls, not the whole run.
+`answer` always saves the workbook on exit — including on an unhandled exception — via
+a try/finally, and additionally saves every SAVE_EVERY_N_ROWS rows so progress is
+visible on disk during a long run. The finally save is what guarantees correctness
+(the xlsx always reflects everything processed so far, matching the sidecar .jsonl
+log); the periodic save is purely a "don't wait until the end to see progress"
+convenience on top of that guarantee, not a substitute for it. (The one thing neither
+can help with is a hard kill, e.g. SIGKILL — no process can run cleanup code after
+that; only a caught exception or a normal/Ctrl-C exit triggers the finally save.)
 
 Answering is delegated to an Answerer (src/answer/answerer.py) selected via --provider:
 "anthropic" (default, real Claude calls) or "stub" (no network/model — for exercising
@@ -116,68 +120,73 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     total_input_tokens = 0
     total_output_tokens = 0
 
-    with open(jsonl_path, "a") as jsonl_file:
-        for i, q in enumerate(questions, start=1):
-            start = time.monotonic()
-            try:
-                sub_question = split_question(q.question_text)[0]
-                evidence = searcher.search(sub_question, top_k=5)
-                result = answerer.answer_question(sub_question, evidence, column_map.vocab_values, row_index=q.row_index)
+    try:
+        with open(jsonl_path, "a") as jsonl_file:
+            for i, q in enumerate(questions, start=1):
+                start = time.monotonic()
+                try:
+                    sub_question = split_question(q.question_text)[0]
+                    evidence = searcher.search(sub_question, top_k=5)
+                    result = answerer.answer_question(sub_question, evidence, column_map.vocab_values, row_index=q.row_index)
 
-                if result.status == AnswerStatus.NOT_FOUND:
-                    final_confidence = "none"
-                elif result.status == AnswerStatus.ANSWERED:
-                    final_confidence = result.confidence  # "high" or "low"
-                else:
-                    final_confidence = "error"  # Answerers never return ERROR themselves; kept for completeness
+                    if result.status == AnswerStatus.NOT_FOUND:
+                        final_confidence = "none"
+                    elif result.status == AnswerStatus.ANSWERED:
+                        final_confidence = result.confidence  # "high" or "low"
+                    else:
+                        final_confidence = "error"  # Answerers never return ERROR themselves; kept for completeness
 
-                answer_text = result.answer
-                vocab_selection = result.vocab_selection
-                self_confidence = result.confidence
-                cited_chunk_ids = result.cited_chunk_ids
-                sources = [f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence]
-                error_message = None
-                total_input_tokens += result.input_tokens
-                total_output_tokens += result.output_tokens
-            except Exception as exc:  # noqa: BLE001 — per-row isolation is the point
-                final_confidence = "error"
-                cited_chunk_ids = []
-                sources = []
-                answer_text = None
-                vocab_selection = None
-                self_confidence = None
-                sub_question = q.question_text
-                error_message = str(exc)
-                click.echo(f"  row {q.row_index}: ERROR — {error_message}")
+                    answer_text = result.answer
+                    vocab_selection = result.vocab_selection
+                    self_confidence = result.confidence
+                    cited_chunk_ids = result.cited_chunk_ids
+                    sources = [f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence]
+                    error_message = None
+                    total_input_tokens += result.input_tokens
+                    total_output_tokens += result.output_tokens
+                except Exception as exc:  # noqa: BLE001 — per-row isolation is the point
+                    final_confidence = "error"
+                    cited_chunk_ids = []
+                    sources = []
+                    answer_text = None
+                    vocab_selection = None
+                    self_confidence = None
+                    sub_question = q.question_text
+                    error_message = str(exc)
+                    click.echo(f"  row {q.row_index}: ERROR — {error_message}")
 
-            elapsed = time.monotonic() - start
+                elapsed = time.monotonic() - start
 
-            write_answer(ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence)
-            db.record_answer(
-                conn, run_id, q.row_index, q.question_text, sub_question,
-                answer_text, vocab_selection, self_confidence, final_confidence, cited_chunk_ids,
-            )
-            db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
+                write_answer(ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence)
+                db.record_answer(
+                    conn, run_id, q.row_index, q.question_text, sub_question,
+                    answer_text, vocab_selection, self_confidence, final_confidence, cited_chunk_ids,
+                )
+                db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
 
-            jsonl_file.write(json.dumps({
-                "row_index": q.row_index,
-                "question_text": q.question_text,
-                "final_confidence": final_confidence,
-                "provider": provider,
-                "answer": answer_text,
-                "error": error_message,
-                "elapsed_seconds": round(elapsed, 2),
-            }) + "\n")
-            jsonl_file.flush()
+                jsonl_file.write(json.dumps({
+                    "row_index": q.row_index,
+                    "question_text": q.question_text,
+                    "final_confidence": final_confidence,
+                    "provider": provider,
+                    "answer": answer_text,
+                    "error": error_message,
+                    "elapsed_seconds": round(elapsed, 2),
+                }) + "\n")
+                jsonl_file.flush()
 
-            counts[final_confidence] += 1
-            if error_message is None:
-                click.echo(f"  row {q.row_index}: {final_confidence} ({elapsed:.1f}s)")
+                counts[final_confidence] += 1
+                if error_message is None:
+                    click.echo(f"  row {q.row_index}: {final_confidence} ({elapsed:.1f}s)")
 
-            if i % SAVE_EVERY_N_ROWS == 0:
-                workbook.save(output)
+                if i % SAVE_EVERY_N_ROWS == 0:
+                    workbook.save(output)
+    finally:
+        # Guarantees the xlsx always reflects everything processed so far, even on an
+        # unhandled exception or Ctrl-C — the periodic save above is just a progress
+        # convenience, not what correctness depends on.
+        workbook.save(output)
 
-    workbook.save(output)
     n_answered = counts["high"] + counts["low"]
     click.echo(
         f"Wrote {output} (+ {jsonl_path.name}). "
