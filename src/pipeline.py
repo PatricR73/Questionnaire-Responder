@@ -3,16 +3,24 @@
 Usage:
     python -m src.pipeline ingest --evidence-dir fixtures/evidence/
     python -m src.pipeline answer --questionnaire fixtures/questionnaire_sample.xlsx --output out/filled.xlsx --limit 5
+    python -m src.pipeline answer --questionnaire fixtures/questionnaire_sample.xlsx --output out/filled.xlsx --provider stub
 
 `answer` saves the workbook incrementally (every SAVE_EVERY_N_ROWS rows, plus always at
 the end) and appends one JSON line per processed row to a sidecar .jsonl file next to
 the output. A crash partway through a run therefore loses at most a few rows' worth of
-paid API calls, not the whole run, and the run can be inspected/resumed from the JSONL
-without re-reading the xlsx. A per-row failure (rate limit, transient API error,
-malformed response) is caught, written to the cell as a distinct "error" state (never
-conflated with "no evidence found" — see write_xlsx.ERROR_MARKER), and the loop
-continues; only a missing API key aborts the whole run up front, since every row would
-fail identically.
+paid API calls, not the whole run.
+
+Answering is delegated to an Answerer (src/answer/answerer.py) selected via --provider:
+"anthropic" (default, real Claude calls) or "stub" (no network/model — for exercising
+the pipeline's plumbing and failure paths for free). A missing API key with
+--provider anthropic always errors; there is no automatic fallback to stub. Stub runs
+are stamped into the audit log and get a visible banner row in the output workbook so
+a stub file can never be mistaken for a real one.
+
+A per-row exception (from either Answerer) is caught here — not inside the Answerer —
+and recorded as AnswerStatus.ERROR, written to the cell as a distinct state (never
+conflated with a verified "no evidence found"; see write_xlsx.ERROR_MARKER), and the
+loop continues to the next row.
 """
 
 import json
@@ -22,9 +30,9 @@ from pathlib import Path
 
 import click
 import openpyxl
+from openpyxl.styles import Alignment, Font, PatternFill
 
-from src.answer.confidence import cross_check_confidence
-from src.answer.generate import generate_answer
+from src.answer.answerer import AnswerStatus, AnthropicAnswerer, StubAnswerer
 from src.answer.split_questions import split_question
 from src.ingest.embed import ingest_evidence
 from src.questionnaire.parse_xlsx import detect_columns, read_questions
@@ -34,6 +42,10 @@ from src.store import db
 from src.store.vectorstore import VectorStore
 
 SAVE_EVERY_N_ROWS = 5
+
+STUB_BANNER_TEXT = "⚠ STUB PROVIDER — THESE ARE NOT REAL ANSWERS (TESTING ONLY)"
+STUB_BANNER_FILL = PatternFill(start_color="D32F2F", end_color="D32F2F", fill_type="solid")
+STUB_BANNER_FONT = Font(bold=True, color="FFFFFF")
 
 
 @click.group()
@@ -52,14 +64,29 @@ def ingest(evidence_dir: Path):
     click.echo(f"Ingested {n} chunks.")
 
 
+def _add_stub_banner(ws, last_col: int) -> None:
+    banner_row = ws.max_row + 1
+    ws.merge_cells(start_row=banner_row, start_column=1, end_row=banner_row, end_column=last_col)
+    cell = ws.cell(row=banner_row, column=1, value=STUB_BANNER_TEXT)
+    cell.fill = STUB_BANNER_FILL
+    cell.font = STUB_BANNER_FONT
+    cell.alignment = Alignment(horizontal="center")
+
+
 @cli.command()
 @click.option("--questionnaire", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
 @click.option("--output", type=click.Path(path_type=Path), required=True)
-@click.option("--limit", type=int, default=5, show_default=True, help="Max question rows to send to Claude this run.")
+@click.option("--limit", type=int, default=5, show_default=True, help="Max question rows to process this run. Use 0 for no limit (process every detected question row).")
 @click.option("--only-row", type=int, default=None, help="Process only this single sheet row (overrides --limit); useful for targeted checks.")
-def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None):
-    if not os.environ.get("ANTHROPIC_API_KEY"):
-        raise click.ClickException("ANTHROPIC_API_KEY not set — export it before running `answer` (every row would fail identically).")
+@click.option("--provider", type=click.Choice(["anthropic", "stub"]), default="anthropic", show_default=True)
+@click.option("--stub-fail-row", type=int, default=None, help="With --provider stub, make that row raise, to exercise per-row error isolation.")
+def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, provider: str, stub_fail_row: int | None):
+    if provider == "anthropic":
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise click.ClickException("ANTHROPIC_API_KEY not set — export it before running with --provider anthropic (every row would fail identically). Use --provider stub if you want to test without a key.")
+        answerer = AnthropicAnswerer()
+    else:
+        answerer = StubAnswerer(fail_row=stub_fail_row)
 
     workbook = openpyxl.load_workbook(questionnaire)
     ws = workbook.active
@@ -71,8 +98,11 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None):
         if not questions:
             raise click.ClickException(f"Row {only_row} is not a detected question row.")
     else:
-        questions = all_questions[:limit]
-    click.echo(f"Answering {len(questions)} row(s).")
+        questions = all_questions if limit == 0 else all_questions[:limit]
+    click.echo(f"Answering {len(questions)} row(s) with provider={provider}.")
+
+    if provider == "stub":
+        _add_stub_banner(ws, last_col=max(column_map.question_col, column_map.answer_col, column_map.vocab_col or 0))
 
     conn = db.connect()
     vector_store = VectorStore()
@@ -92,16 +122,23 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None):
             try:
                 sub_question = split_question(q.question_text)[0]
                 evidence = searcher.search(sub_question, top_k=5)
-                draft = generate_answer(sub_question, evidence, column_map.vocab_values)
-                final_confidence = cross_check_confidence(draft, evidence)
-                cited_chunk_ids = [c.embedding_id for c in evidence]
+                result = answerer.answer_question(sub_question, evidence, column_map.vocab_values, row_index=q.row_index)
+
+                if result.status == AnswerStatus.NOT_FOUND:
+                    final_confidence = "none"
+                elif result.status == AnswerStatus.ANSWERED:
+                    final_confidence = result.confidence  # "high" or "low"
+                else:
+                    final_confidence = "error"  # Answerers never return ERROR themselves; kept for completeness
+
+                answer_text = result.answer
+                vocab_selection = result.vocab_selection
+                self_confidence = result.confidence
+                cited_chunk_ids = result.cited_chunk_ids
                 sources = [f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence]
-                answer_text = draft.answer
-                vocab_selection = draft.vocab_selection
-                self_confidence = draft.self_confidence
-                total_input_tokens += draft.input_tokens
-                total_output_tokens += draft.output_tokens
                 error_message = None
+                total_input_tokens += result.input_tokens
+                total_output_tokens += result.output_tokens
             except Exception as exc:  # noqa: BLE001 — per-row isolation is the point
                 final_confidence = "error"
                 cited_chunk_ids = []
@@ -120,12 +157,13 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None):
                 conn, run_id, q.row_index, q.question_text, sub_question,
                 answer_text, vocab_selection, self_confidence, final_confidence, cited_chunk_ids,
             )
-            db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence)
+            db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
 
             jsonl_file.write(json.dumps({
                 "row_index": q.row_index,
                 "question_text": q.question_text,
                 "final_confidence": final_confidence,
+                "provider": provider,
                 "answer": answer_text,
                 "error": error_message,
                 "elapsed_seconds": round(elapsed, 2),
@@ -140,12 +178,15 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None):
                 workbook.save(output)
 
     workbook.save(output)
-    n_calls = counts["high"] + counts["low"] + counts["none"]
-    click.echo(f"Wrote {output} (+ {jsonl_path.name}). high={counts['high']} low={counts['low']} none={counts['none']} error={counts['error']}")
-    if n_calls:
+    n_answered = counts["high"] + counts["low"]
+    click.echo(
+        f"Wrote {output} (+ {jsonl_path.name}). "
+        f"answered={n_answered} flagged_low={counts['low']} not_found={counts['none']} error={counts['error']}"
+    )
+    if provider == "anthropic" and n_answered:
         click.echo(
             f"Tokens: {total_input_tokens} in / {total_output_tokens} out "
-            f"(avg {total_input_tokens // n_calls} in / {total_output_tokens // n_calls} out per question)"
+            f"(avg {total_input_tokens // n_answered} in / {total_output_tokens // n_answered} out per question)"
         )
 
 

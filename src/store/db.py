@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
     row_index INTEGER NOT NULL,
     sources_consulted TEXT,
     confidence TEXT NOT NULL,
+    provider TEXT,
     human_action TEXT,
     timestamp TEXT NOT NULL
 );
@@ -54,6 +55,11 @@ def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
+    try:
+        conn.execute("ALTER TABLE audit_log ADD COLUMN provider TEXT")
+        conn.commit()
+    except sqlite3.OperationalError:
+        pass  # column already exists on a pre-existing dev database
     return conn
 
 
@@ -103,10 +109,11 @@ def record_audit_entry(
     row_index: int,
     sources_consulted: list[str],
     confidence: str,
+    provider: str | None = None,
 ) -> None:
     conn.execute(
-        "INSERT INTO audit_log (run_id, row_index, sources_consulted, confidence, human_action, timestamp) "
-        "VALUES (?, ?, ?, ?, NULL, ?)",
-        (run_id, row_index, json.dumps(sources_consulted), confidence, datetime.now(timezone.utc).isoformat()),
+        "INSERT INTO audit_log (run_id, row_index, sources_consulted, confidence, provider, human_action, timestamp) "
+        "VALUES (?, ?, ?, ?, ?, NULL, ?)",
+        (run_id, row_index, json.dumps(sources_consulted), confidence, provider, datetime.now(timezone.utc).isoformat()),
     )
     conn.commit()

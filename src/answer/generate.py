@@ -7,11 +7,15 @@ plumbing around it. Read it as a contract, not a suggestion.
 """
 
 import os
+import time
 from dataclasses import dataclass
 
 from src.retrieval.hybrid_search import RetrievedChunk
 
 MODEL = "claude-opus-4-5-20251101"
+REQUEST_TIMEOUT_SECONDS = 30.0
+MAX_RETRIES = 3
+RETRY_BASE_DELAY_SECONDS = 1.0
 
 SYSTEM_PROMPT = """You are drafting one answer to a vendor security questionnaire on behalf of an \
 organization. You may use ONLY the evidence text provided to you below in this prompt. You have no \
@@ -111,15 +115,26 @@ def generate_answer(
 
     import anthropic
 
-    client = anthropic.Anthropic()
-    response = client.messages.create(
-        model=MODEL,
-        max_tokens=1024,
-        system=SYSTEM_PROMPT,
-        tools=[_ANSWER_TOOL],
-        tool_choice={"type": "tool", "name": "record_answer"},
-        messages=[{"role": "user", "content": _build_user_message(question, evidence_chunks, vocab_values)}],
-    )
+    client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT_SECONDS)
+    retryable = (anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APITimeoutError, anthropic.APIConnectionError)
+
+    attempt = 0
+    while True:
+        try:
+            response = client.messages.create(
+                model=MODEL,
+                max_tokens=1024,
+                system=SYSTEM_PROMPT,
+                tools=[_ANSWER_TOOL],
+                tool_choice={"type": "tool", "name": "record_answer"},
+                messages=[{"role": "user", "content": _build_user_message(question, evidence_chunks, vocab_values)}],
+            )
+            break
+        except retryable:
+            if attempt >= MAX_RETRIES:
+                raise
+            time.sleep(RETRY_BASE_DELAY_SECONDS * (2**attempt))
+            attempt += 1
 
     tool_use = next(block for block in response.content if block.type == "tool_use")
     result = tool_use.input
