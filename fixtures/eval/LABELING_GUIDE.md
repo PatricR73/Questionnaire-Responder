@@ -67,19 +67,37 @@ addresses encryption, not access control or backups)?
   is coverage, not relevance. Reviewer action: verify the system's answer explicitly
   names what's unaddressed rather than silently answering only the covered part.
 
-  Two flavors here too, and they want to be told apart even though both get the same
-  label: **compound-question** partials (the question itself has multiple clauses,
-  e.g. "do you encrypt data at rest and in transit, and how often are keys rotated" —
-  evidence covers some clauses, not others) versus **scope-mismatch** partials (a
-  single-topic question broader than what's documented, e.g. "how do you protect
-  customer data" when only encryption is documented). Real CAIQ questions are often
-  compound — three clauses joined by "and" covering distinct controls — and that's
-  worth keeping some of deliberately, since it's realistic. But don't let compound-
-  question artifacts dominate the `ANSWERED_PARTIAL` bucket: the two failure modes
-  want different fixes (compound → better question splitting; scope-mismatch → better
-  retrieval/corpus coverage), and if the bucket fills with one flavor the eval will
-  look like it's measuring "partial answers" in general when it's really only
-  measuring one specific cause. Aim for roughly half and half of the 4 `PARTIAL` slots.
+  Three flavors here, and they want to be told apart even though all three get the
+  same label:
+
+  - **compound-question** partials — the question itself has multiple clauses (e.g.
+    "do you encrypt data at rest and in transit, and how often are keys rotated"),
+    evidence covers some clauses, not others. Fix direction: better question splitting.
+  - **scope-mismatch** partials — a single-topic question broader than what's
+    documented (e.g. "is the confidentiality, integrity, and availability of backup
+    data ensured" when the corpus only documents backup availability/durability, not
+    confidentiality or integrity of the backup data itself). Fix direction: better
+    retrieval/corpus coverage.
+  - **governance-gap** partials — the evidence confirms the operational practice but
+    not the formal-policy layer the question actually asks about (e.g. "are crypto
+    policies established, documented, approved, communicated, evaluated, and
+    maintained" when the corpus documents that encryption is *applied*, with no
+    mention of policy approval, review cadence, or ownership). Fix direction: neither
+    of the above — this one is a real, distinct failure mode, not a bug to fix in this
+    corpus. **Known corpus artifact**: this project's two evidence documents are
+    operational policies with no governance/review-cadence content at all, so *every*
+    CAIQ question touching policy lifecycle will land here for the same underlying
+    reason. Two governance-gap slots in a 4-question `PARTIAL` bucket means you are
+    deliberately measuring one corpus limitation twice, not two independent failure
+    modes — accepted here because the gap itself is realistic (real evidence packs
+    genuinely lack this), but don't read "half the PARTIAL bucket is governance-gap"
+    as broad signal about partial-answer handling in general.
+
+  Real CAIQ questions are often compound — three clauses joined by "and" covering
+  distinct controls — and that's worth keeping some of deliberately, since it's
+  realistic. But don't let compound-question artifacts dominate the `ANSWERED_PARTIAL`
+  bucket either: if one flavor swamps the other two, the eval will look like it's
+  measuring "partial answers" in general when it's really only measuring one cause.
 
 **4. Otherwise** — the evidence directly and fully addresses the question as asked.
 
@@ -88,6 +106,21 @@ addresses encryption, not access control or backups)?
   (a documented negative, e.g. "shared accounts are prohibited") → label
   `ANSWERED_DENIES`. This is a real, fully-supported answer — never relabel a
   documented "no" as `NOT_FOUND` because the answer itself is negative.
+
+  **`ANSWERED_DENIES` is structurally rare against CAIQ, and that's a finding about the
+  instrument, not a gap to manufacture around.** Confirmed against real data, twice:
+  scanning the full 262-question CAIQ v4.0.2 pool for a question our corpus's one
+  negative statement ("shared accounts are prohibited") would answer found no clean
+  match — the nearest ID (`IAM-13.1`, unique identification) is actually answered
+  *affirmatively* by that same sentence. CAIQ almost always asks "does control X
+  exist," not "is anti-pattern Y permitted," so a documented negative has nowhere to
+  land in most of its questions regardless of what the evidence says. Target mix below
+  reflects this: 1 `ANSWERED_DENIES` slot, not the 3 originally planned before seeing
+  real question text. The one case is deliberately constructed — a real CAIQ question
+  (`CEK-08.1`, "can CSCs manage their own encryption keys") the corpus did not
+  originally address, answered by adding a single honest sentence to the existing
+  encryption section rather than bending a question to fit. See the evidence corpus
+  commit for exactly what was added and why.
 
 ## Summary table
 
@@ -106,9 +139,10 @@ two-document synthetic corpus, so pulling questions unfiltered will skew heavily
 toward `NOT_FOUND` — that measures abstention almost exclusively and says nothing
 about retrieval or answer quality. Target mix, decided before fetching:
 
-- 5x `ANSWERED_AFFIRMS`
-- 3x `ANSWERED_DENIES`
-- 4x `ANSWERED_PARTIAL`
+- 7x `ANSWERED_AFFIRMS`
+- 1x `ANSWERED_DENIES` (dropped from an originally-planned 3 — see the rarity note above)
+- 4x `ANSWERED_PARTIAL`: 1 compound, 1 scope-mismatch, 2 governance-gap (see above —
+  the 2 governance-gap slots deliberately measure the same corpus limitation twice)
 - 6x `NOT_FOUND`, split as:
   - 4x easy (no nearby evidence at all — fully unrelated to anything the corpus covers)
   - 2x **calibration** (a genuine near-miss: a control adjacent to but distinct from
@@ -120,7 +154,10 @@ about retrieval or answer quality. Target mix, decided before fetching:
     two, the eval only samples the easy end of the distance distribution and would
     report the threshold as well-calibrated when it's only been tested where it can't
     fail.
-- 2x `AMBIGUOUS_EVIDENCE`
+- 2x `AMBIGUOUS_EVIDENCE` — deliberately held open. A real contradiction (same
+  control, two documents, genuinely irreconcilable — not one document merely being
+  vaguer than the other) needs its own careful design pass, not to be bundled in
+  alongside 18 other picks.
 
 To hit this: select CAIQ/VSAQ questions to fit the mix, and where there aren't enough
 naturally-answerable real questions for the corpus as it stands, **expand the evidence
@@ -149,5 +186,17 @@ ID (e.g. CAIQ `IAM-02`) alongside the question text. Two reasons: it's the proof
 question wasn't generated, and it's how a bad-fit question gets traced back to what
 was actually pulled instead of leaving it ambiguous whether the text was edited along
 the way. Fixture row shape: `{source_id, question_text, expected_label, notes}` —
-`notes` is where the calibration/compound-vs-scope-mismatch flavor and any labeling
-rationale goes.
+`notes` is where the calibration/compound-vs-scope-mismatch/governance-gap flavor and
+any labeling rationale goes.
+
+**Licensing: quote a small selection, never commit the full source pool.** CSA's terms
+prohibit redistributing CCM/CAIQ (the one exception — a CSP redistributing its own
+filled-out copy — doesn't apply here), but permit quoting portions under fair use with
+attribution to CSA. The ~20 selected questions with control IDs and attribution are
+defensible fair-use quotation; a near-complete reproduction of the instrument (e.g. the
+full ~260-question extracted pool used to select from) is not. Do the full-pool
+extraction and selection in a scratch location outside the repo, and never commit
+anything beyond the selected subset. (No AWS or other vendor's *answers* should ever
+appear anywhere in this repo either, extracted or otherwise — that's a separate,
+answer-contamination reason to keep source extraction scoped to question text + ID
+only, verified before selecting.)

@@ -5,3 +5,10 @@ __pycache__/
 out/
 .claude/
 .env
+
+# Full extracted CAIQ/VSAQ source pools: CSA's license permits quoting a small
+# selection with attribution, not redistributing the full instrument. Only the
+# committed subset in fixtures/eval/ should ever be tracked.
+fixtures/eval/*_source_pool.*
+fixtures/eval/caiq_full*
+fixtures/eval/*_full_pool.*
