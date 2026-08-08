@@ -6,6 +6,7 @@ single point of enforcement for that guarantee — everything else in the pipeli
 plumbing around it. Read it as a contract, not a suggestion.
 """
 
+import json
 import os
 import time
 from dataclasses import dataclass
@@ -89,37 +90,77 @@ class AnswerDraft:
     output_tokens: int
 
 
-_ANSWER_TOOL = {
-    "name": "record_answer",
-    "description": "Record the drafted answer to a vendor security questionnaire question.",
-    "input_schema": {
-        "type": "object",
-        "properties": {
-            "supported": {"type": "boolean", "description": "Whether the provided evidence supports any answer at all."},
-            "answer": {"type": "string", "description": "The drafted answer text, or empty string if unsupported."},
-            "cited_sentences": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Verbatim sentences copied from the evidence text that support the answer.",
-            },
-            "vocab_selection": {
-                "type": ["string", "null"],
-                "description": "One value copied from the allowed vocabulary list, or null.",
-            },
-            "self_confidence": {
-                "type": "string",
-                "enum": ["high", "low", "none"],
-                "description": "Self-assessed confidence: 'none' if unsupported, 'low' if partial, 'high' if fully supported.",
-            },
-            "polarity": {
-                "type": ["string", "null"],
-                "enum": ["affirms", "denies", "partial", None],
-                "description": "Only meaningful when supported=true: 'affirms' if the evidence confirms the control/practice exists, 'denies' if the evidence explicitly states it does NOT (a documented negative — not the same as no evidence at all), 'partial' if only part of the question is addressed OR the evidence contains an unresolved contradiction (rule 8). Null when supported=false.",
-            },
+REQUIRED_ANSWER_KEYS = {"supported", "answer", "cited_sentences", "vocab_selection", "self_confidence", "polarity"}
+
+# Passed via output_config for real structured-output enforcement (constrained decoding
+# against this exact schema), not merely a tool-use hint. tool_choice-forced tool calls
+# were tried first and still let the model drift out of schema under longer, more
+# hedged reasoning (observed directly: 3 of 20 real calls emitted leaked
+# "</answer>\n<parameter name=...>" text inside the answer string instead of a proper
+# cited_sentences field). output_config.format is the stronger mechanism — the API
+# rejects/reformats non-conformant output rather than merely being asked nicely for it.
+# Nullable enum fields use anyOf, not a bare "type": [...,"null"] + enum list — the
+# structured-output validator rejects the latter combination outright.
+_ANSWER_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "supported": {"type": "boolean", "description": "Whether the provided evidence supports any answer at all."},
+        "answer": {"type": "string", "description": "The drafted answer text, or empty string if unsupported."},
+        "cited_sentences": {
+            "type": "array",
+            "items": {"type": "string"},
+            "description": "Verbatim sentences copied from the evidence text that support the answer.",
         },
-        "required": ["supported", "answer", "cited_sentences", "vocab_selection", "self_confidence", "polarity"],
+        "vocab_selection": {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+            "description": "One value copied from the allowed vocabulary list, or null.",
+        },
+        "self_confidence": {
+            "type": "string",
+            "enum": ["high", "low", "none"],
+            "description": "Self-assessed confidence: 'none' if unsupported, 'low' if partial, 'high' if fully supported.",
+        },
+        "polarity": {
+            "anyOf": [{"type": "string", "enum": ["affirms", "denies", "partial"]}, {"type": "null"}],
+            "description": "Only meaningful when supported=true: 'affirms' if the evidence confirms the control/practice exists, 'denies' if the evidence explicitly states it does NOT (a documented negative — not the same as no evidence at all), 'partial' if only part of the question is addressed OR the evidence contains an unresolved contradiction (rule 8). Null when supported=false.",
+        },
     },
+    "required": ["supported", "answer", "cited_sentences", "vocab_selection", "self_confidence", "polarity"],
+    "additionalProperties": False,
 }
+
+_CORRECTIVE_SUFFIX = (
+    "\n\n(Your previous response for this question did not parse as the required JSON object. "
+    "Return ONLY a single JSON object with exactly these keys: supported, answer, cited_sentences, "
+    "vocab_selection, self_confidence, polarity. No text outside the JSON object, no XML-style tags.)"
+)
+
+
+class MalformedAnswerError(RuntimeError):
+    """The model's response didn't parse into the expected answer schema, even after one
+    corrective retry. This is a real, permanent property of LLM APIs — not eliminated by
+    schema enforcement, only made rare. Callers (pipeline.py) catch this per-row, same as
+    any other Answerer failure, and record it as AnswerStatus.ERROR: never crash the
+    batch, and never let a malformed response get silently treated as NOT_FOUND — that
+    would misrepresent a processing failure as a verified absence of evidence."""
+
+
+def _extract_answer_payload(response) -> dict:
+    text_block = next((block for block in response.content if block.type == "text"), None)
+    if text_block is None:
+        block_types = [block.type for block in response.content]
+        raise MalformedAnswerError(f"No text content block in response (stop_reason={response.stop_reason!r}, blocks={block_types})")
+
+    try:
+        payload = json.loads(text_block.text)
+    except json.JSONDecodeError as exc:
+        raise MalformedAnswerError(f"Response text is not valid JSON: {exc}") from exc
+
+    if not isinstance(payload, dict) or not REQUIRED_ANSWER_KEYS.issubset(payload.keys()):
+        got_keys = set(payload.keys()) if isinstance(payload, dict) else "(not a JSON object)"
+        raise MalformedAnswerError(f"Response JSON missing required keys: {REQUIRED_ANSWER_KEYS - (got_keys if isinstance(got_keys, set) else set())}; got: {got_keys}")
+
+    return payload
 
 
 def _build_user_message(question: str, evidence_chunks: list[RetrievedChunk], vocab_values: list[str] | None) -> str:
@@ -144,33 +185,53 @@ def generate_answer(
     client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT_SECONDS)
     retryable = (anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APITimeoutError, anthropic.APIConnectionError)
 
-    attempt = 0
-    while True:
-        try:
-            response = client.messages.create(
-                model=MODEL,
-                max_tokens=1024,
-                system=SYSTEM_PROMPT,
-                tools=[_ANSWER_TOOL],
-                tool_choice={"type": "tool", "name": "record_answer"},
-                messages=[{"role": "user", "content": _build_user_message(question, evidence_chunks, vocab_values)}],
-            )
-            break
-        except retryable:
-            if attempt >= MAX_RETRIES:
-                raise
-            time.sleep(RETRY_BASE_DELAY_SECONDS * (2**attempt))
-            attempt += 1
+    def call(user_content: str):
+        attempt = 0
+        while True:
+            try:
+                return client.messages.create(
+                    model=MODEL,
+                    max_tokens=1024,
+                    system=SYSTEM_PROMPT,
+                    output_config={"format": {"type": "json_schema", "schema": _ANSWER_SCHEMA}},
+                    messages=[{"role": "user", "content": user_content}],
+                )
+            except retryable:
+                if attempt >= MAX_RETRIES:
+                    raise
+                time.sleep(RETRY_BASE_DELAY_SECONDS * (2**attempt))
+                attempt += 1
 
-    tool_use = next(block for block in response.content if block.type == "tool_use")
-    result = tool_use.input
+    base_message = _build_user_message(question, evidence_chunks, vocab_values)
+    response = call(base_message)
+    total_input_tokens = response.usage.input_tokens
+    total_output_tokens = response.usage.output_tokens
+
+    try:
+        payload = _extract_answer_payload(response)
+    except MalformedAnswerError as first_error:
+        # One corrective retry, not more — a schema violation this strict output mode
+        # still let through is rare (see _ANSWER_SCHEMA's docstring note); a second
+        # failure means something structural, not a one-off sampling fluke, and should
+        # surface as a real per-row error rather than be retried indefinitely.
+        response = call(base_message + _CORRECTIVE_SUFFIX)
+        total_input_tokens += response.usage.input_tokens
+        total_output_tokens += response.usage.output_tokens
+        try:
+            payload = _extract_answer_payload(response)
+        except MalformedAnswerError as second_error:
+            raise MalformedAnswerError(
+                f"Model response for {question!r} did not parse after one corrective retry. "
+                f"First attempt: {first_error} Retry attempt: {second_error}"
+            ) from second_error
+
     return AnswerDraft(
-        answer=result["answer"],
-        supported=result["supported"],
-        cited_sentences=result["cited_sentences"],
-        vocab_selection=result["vocab_selection"],
-        self_confidence=result["self_confidence"],
-        polarity=result["polarity"],
-        input_tokens=response.usage.input_tokens,
-        output_tokens=response.usage.output_tokens,
+        answer=payload["answer"],
+        supported=payload["supported"],
+        cited_sentences=payload["cited_sentences"],
+        vocab_selection=payload["vocab_selection"],
+        self_confidence=payload["self_confidence"],
+        polarity=payload["polarity"],
+        input_tokens=total_input_tokens,
+        output_tokens=total_output_tokens,
     )
