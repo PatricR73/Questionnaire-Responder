@@ -8,3 +8,4 @@ rank-bm25>=0.2.2
 pydantic>=2.7.0
 click>=8.1.0
 pytest>=8.0.0
+streamlit>=1.38.0

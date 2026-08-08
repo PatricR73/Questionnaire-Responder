@@ -59,6 +59,12 @@ def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
     for statement in (
         "ALTER TABLE audit_log ADD COLUMN provider TEXT",
         "ALTER TABLE answers ADD COLUMN polarity TEXT",
+        # Human-edited text from the review UI. Kept separate from drafted_answer,
+        # which must stay exactly what the model produced — the eval harness scores
+        # against drafted_answer, and overwriting it would make past baselines
+        # unreproducible. Also gives a free model-vs-human diff for a future
+        # feedback-loop slice.
+        "ALTER TABLE answers ADD COLUMN reviewed_answer TEXT",
     ):
         try:
             conn.execute(statement)
@@ -123,4 +129,29 @@ def record_audit_entry(
         "VALUES (?, ?, ?, ?, ?, NULL, ?)",
         (run_id, row_index, json.dumps(sources_consulted), confidence, provider, datetime.now(timezone.utc).isoformat()),
     )
+    conn.commit()
+
+
+def record_human_review(
+    conn: sqlite3.Connection,
+    run_id: int,
+    row_index: int,
+    human_action: str,
+    reviewed_answer: str | None = None,
+) -> None:
+    """Record a reviewer's decision for one row. Used only by the review UI.
+
+    human_action is one of "approved" | "edited" | "rejected". reviewed_answer is
+    only ever set on "edited" — drafted_answer (the model's original output) is never
+    touched, so eval-harness scoring against it stays reproducible.
+    """
+    conn.execute(
+        "UPDATE audit_log SET human_action = ?, timestamp = ? WHERE run_id = ? AND row_index = ?",
+        (human_action, datetime.now(timezone.utc).isoformat(), run_id, row_index),
+    )
+    if reviewed_answer is not None:
+        conn.execute(
+            "UPDATE answers SET reviewed_answer = ? WHERE run_id = ? AND row_index = ?",
+            (reviewed_answer, run_id, row_index),
+        )
     conn.commit()
