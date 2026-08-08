@@ -26,6 +26,24 @@ def _combine_loc_refs(first: str, last: str) -> str:
     return f"{first}–{last}"
 
 
+def _drop_front_matter(blocks: list[ParsedBlock]) -> list[ParsedBlock]:
+    """Drop any leading run of blocks that precede the document's first heading.
+
+    Real evidence packs routinely open with a confidentiality banner, title page, or
+    disclaimer before the actual document title/first section — boilerplate, not
+    evidence. Left in, it becomes a short, generically-worded chunk that semantically
+    brushes up against almost any question and shows up as a false-positive distractor
+    in retrieval (observed directly: this project's own synthetic-fixture notice was
+    matching in the top-5 results for roughly half of a sample eval question set).
+    Only a *leading* run is dropped — heading-less text is unusual anywhere else in a
+    document and is assumed to be real content, not front matter.
+    """
+    index = 0
+    while index < len(blocks) and not blocks[index].heading_path:
+        index += 1
+    return blocks[index:]
+
+
 def chunk_blocks(
     blocks: list[ParsedBlock],
     source_filename: str,
@@ -33,6 +51,7 @@ def chunk_blocks(
     min_chars: int = MIN_CHUNK_CHARS,
 ) -> list[Chunk]:
     """Group blocks by heading path, then split/merge each group to respect size bounds."""
+    blocks = _drop_front_matter(blocks)
     chunks: list[Chunk] = []
     current_heading: str | None = None
     current_texts: list[str] = []
