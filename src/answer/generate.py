@@ -62,6 +62,17 @@ found" — that erases a fact the organization actually stated. When supported=t
 affirms the control/practice exists, set "polarity" to "affirms". When the evidence only partially \
 addresses the question (rule 2), set "polarity" to "partial".
 
+8. CONFLICTING EVIDENCE MUST NOT BE RECONCILED. If two or more passages make specific, mutually \
+exclusive claims about the same control (e.g. one states passwords rotate every 180 days, another \
+states 90 days), you MUST NOT pick one, average them, or silently favor the passage that sounds more \
+recent, more specific, or more authoritative — none of that is a fact you were given, it is you \
+guessing which document is right. Instead: state both claims plainly in "answer", attribute each to its \
+source document, and say outright that the evidence is contradictory. Set "supported" to true, \
+"self_confidence" to "low", and "polarity" to "partial" (the closest available category — a \
+contradiction is not a coherent, complete answer). "cited_sentences" must include the verbatim \
+conflicting sentences from every passage involved, so the grounding check can verify both sides were \
+quoted, not synthesized.
+
 You will be given the question and a set of evidence passages, each labeled with its source document \
 and location. Use only those passages."""
 
@@ -103,7 +114,7 @@ _ANSWER_TOOL = {
             "polarity": {
                 "type": ["string", "null"],
                 "enum": ["affirms", "denies", "partial", None],
-                "description": "Only meaningful when supported=true: 'affirms' if the evidence confirms the control/practice exists, 'denies' if the evidence explicitly states it does NOT (a documented negative — not the same as no evidence at all), 'partial' if only part of the question is addressed. Null when supported=false.",
+                "description": "Only meaningful when supported=true: 'affirms' if the evidence confirms the control/practice exists, 'denies' if the evidence explicitly states it does NOT (a documented negative — not the same as no evidence at all), 'partial' if only part of the question is addressed OR the evidence contains an unresolved contradiction (rule 8). Null when supported=false.",
             },
         },
         "required": ["supported", "answer", "cited_sentences", "vocab_selection", "self_confidence", "polarity"],
