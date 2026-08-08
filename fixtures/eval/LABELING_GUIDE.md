@@ -150,16 +150,28 @@ two-document synthetic corpus, so pulling questions unfiltered will skew heavily
 toward `NOT_FOUND` — that measures abstention almost exclusively and says nothing
 about retrieval or answer quality. Target mix, decided before fetching:
 
-- 7x `ANSWERED_AFFIRMS`: `IVS-03.2`, `BCR-08.1`, `IAM-08.1`, `IAM-13.1`, `BCR-03.1`,
-  `SEF-06.1`, `UEM-13.1` — seven distinct evidence sections, none shared by two
-  questions (see the retrieval-verification table below; `IAM-02.1` was dropped from
-  an earlier draft of this list — its question text is the same "established,
-  documented, approved, communicated, ..., maintained" policy-lifecycle template as
-  the two `governance-gap` `PARTIAL` cases, and this corpus has no governance-layer
-  content to answer that template with, so it isn't a real `AFFIRMS`).
+- 6x `ANSWERED_AFFIRMS`: `BCR-08.1`, `IAM-08.1`, `IAM-13.1`, `BCR-03.1`, `SEF-06.1`,
+  `UEM-13.1` — six distinct evidence sections, none shared by two questions (see the
+  retrieval-verification table below; `IAM-02.1` was dropped from an earlier draft of
+  this list — its question text is the same "established, documented, approved,
+  communicated, ..., maintained" policy-lifecycle template as the two `governance-gap`
+  `PARTIAL` cases, and this corpus has no governance-layer content to answer that
+  template with, so it isn't a real `AFFIRMS`). `IVS-03.2` moved out of this bucket
+  after hand-scoring the first baseline run — see the `ANSWERED_PARTIAL` note below.
 - 1x `ANSWERED_DENIES` (dropped from an originally-planned 3 — see the rarity note above)
-- 4x `ANSWERED_PARTIAL`: 1 compound, 1 scope-mismatch, 2 governance-gap (see above —
-  the 2 governance-gap slots deliberately measure the same corpus limitation twice)
+- 5x `ANSWERED_PARTIAL`: 1 compound (`STA-09.1`), 2 scope-mismatch (`BCR-08.2`,
+  `IVS-03.2`), 2 governance-gap (`CEK-01.1`, `SEF-02.1`). `IVS-03.2` was reassigned
+  here from `ANSWERED_AFFIRMS` during hand-scoring of the first baseline run (not
+  bumped up front) — re-reading its evidence text ("all network traffic between
+  clients and production services... internal service-to-service traffic within the
+  production VPC") shows it covers production-internal traffic only, never
+  cross-environment traffic, which is what "communications between environments"
+  plausibly asks about. The baseline system's own answer got this right — stated the
+  production-TLS facts, then explicitly flagged the cross-environment gap — which is
+  what surfaced the label as too generous. Relabeled on the evidence, not because the
+  system disagreed with the old label (see the eval baseline notes in the project
+  README for the full reasoning). The 2 governance-gap slots still deliberately
+  measure the same corpus limitation twice, as before.
 - 6x `NOT_FOUND`, split as:
   - 4x easy (no nearby evidence at all — fully unrelated to anything the corpus covers)
   - 4x easy: `LOG-12.1`, `A&A-02.1`, `HRS-01.1`, `DSP-14.1` — verified against the real
@@ -248,10 +260,13 @@ rather than reading as one generic "retrieval is imperfect" finding:
   real question text ("MFA for least-privileged user and sensitive data access") fits
   the scope-conflict case better than a plain affirmation, and because it was one of
   three `ANSWERED_AFFIRMS` questions all landing on the same short Authentication
-  paragraph — pulling it out helped fix that clustering. The final `ANSWERED_AFFIRMS`
-  backfill (`IAM-08.1`, `IAM-13.1`, `BCR-03.1`, `SEF-06.1`, `UEM-13.1`, plus the two
-  originally-clean picks `IVS-03.2`/`BCR-08.1`) lands on seven distinct evidence
-  sections across all three documents — see the retrieval-verification table below.
+  paragraph — pulling it out helped fix that clustering. The `ANSWERED_AFFIRMS`
+  backfill (`IAM-08.1`, `IAM-13.1`, `BCR-03.1`, `SEF-06.1`, `UEM-13.1`, plus the
+  originally-clean pick `BCR-08.1`) lands on six distinct evidence sections across all
+  three documents — see the retrieval-verification table below. (`IVS-03.2` was also
+  originally in this backfill and retrieves cleanly, but was later moved to
+  `ANSWERED_PARTIAL` during baseline hand-scoring — a labeling correction unrelated to
+  retrieval, see the `ANSWERED_PARTIAL` section above.)
 
   `it_operations_standards.md` must contain enough unrelated real-looking content
   around the two conflicting paragraphs that retrieval isn't trivially handed only the

@@ -5,8 +5,8 @@
     {
       "source_id": "IVS-03.2",
       "question_text": "Are communications between environments encrypted?",
-      "expected_label": "ANSWERED_AFFIRMS",
-      "notes": "Evidence: access_control_policy.md > Encryption > Encryption in transit ('encrypted in transit using TLS 1.2 or higher... mutual TLS'). Retrieval verified clean: rank 1, dist 0.249."
+      "expected_label": "ANSWERED_PARTIAL",
+      "notes": "RELABELED during hand-scoring of the first baseline run — was ANSWERED_AFFIRMS, corrected to PARTIAL (scope-mismatch, 3rd instance alongside BCR-08.2). Re-reading the actual evidence text settles it, not the system's disagreement with the old label: access_control_policy.md > Encryption > Encryption in transit states 'All network traffic between clients and production services is encrypted... internal service-to-service traffic within the production VPC is also encrypted using mutual TLS' — that's production-internal traffic only. Nothing addresses cross-environment traffic (dev/staging/prod boundaries), which is what 'communications between environments' plausibly asks about. The system's baseline answer stated the production-TLS facts directly, then explicitly flagged that cross-environment traffic isn't addressed — a correct, well-hedged PARTIAL, not a weak AFFIRMS. Retrieval verified clean: rank 1, dist 0.249 (unchanged by the relabel — retrieval was never the issue here)."
     },
     {
       "source_id": "BCR-08.1",
