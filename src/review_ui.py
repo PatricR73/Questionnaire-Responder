@@ -35,8 +35,14 @@ BADGES = {
 st.set_page_config(page_title="Questionnaire review", layout="wide")
 
 
-@st.cache_resource
 def get_conn():
+    """A fresh connection every call, deliberately not cached across Streamlit
+    reruns (e.g. via @st.cache_resource): reruns can execute on different threads,
+    and sqlite3 connections can only ever be used on the thread that created them.
+    Caching one hands a connection created on thread A to a rerun executing on
+    thread B, which raises sqlite3.ProgrammingError the first time it's used there —
+    check_same_thread=False would silence that without making shared access actually
+    safe, so the real fix is to never share a connection across threads at all."""
     return db.connect()
 
 
