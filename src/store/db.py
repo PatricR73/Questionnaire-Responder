@@ -155,3 +155,19 @@ def record_human_review(
             (reviewed_answer, run_id, row_index),
         )
     conn.commit()
+
+
+def record_export(conn: sqlite3.Connection, run_id: int, output_path: str, review_counts: dict) -> None:
+    """Record a reviewed-workbook export. No new table or column: reuses audit_log
+    with row_index=-1, a sentinel no real question row ever has, since an export is a
+    run-level event rather than something that happened to one row. sources_consulted
+    (a JSON text column, already used for a different purpose on per-row entries)
+    carries the exported path and the approved/edited/rejected counts at export time —
+    "the review state at that moment," not just that an export happened.
+    """
+    conn.execute(
+        "INSERT INTO audit_log (run_id, row_index, sources_consulted, confidence, provider, human_action, timestamp) "
+        "VALUES (?, -1, ?, 'export', NULL, 'exported', ?)",
+        (run_id, json.dumps({"output_path": output_path, "review_counts": review_counts}), datetime.now(timezone.utc).isoformat()),
+    )
+    conn.commit()

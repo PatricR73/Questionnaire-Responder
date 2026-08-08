@@ -21,8 +21,11 @@ from pathlib import Path
 # before the src.* imports.
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import openpyxl
 import streamlit as st
 
+from src.questionnaire.parse_xlsx import detect_columns
+from src.questionnaire.write_xlsx import write_answer
 from src.store import db
 
 BADGES = {
@@ -106,11 +109,50 @@ def render_row(conn, run_id, row):
     st.divider()
 
 
+def _reviewed_export_path(output_path: str) -> Path:
+    p = Path(output_path)
+    return p.with_stem(p.stem + "_reviewed")
+
+
+def export_reviewed_workbook(conn, run_id: int, source_path: str, output_path: str, rows) -> Path:
+    """Writes a new workbook containing the *reviewed* result, never the pipeline's
+    original output file. Reuses write_xlsx.write_answer exactly as the pipeline does
+    (loads the pristine source questionnaire fresh via detect_columns + openpyxl, so
+    merged cells/spacer rows/formatting stay untouched the same way) — no second
+    writer, no new write logic. The only per-row decision made here, not in
+    write_xlsx.py, is which text counts as the answer for a given human_action; that
+    didn't need a new write_answer parameter since it already takes answer_text.
+    """
+    workbook = openpyxl.load_workbook(source_path)
+    ws = workbook.active
+    column_map = detect_columns(ws)
+
+    counts = {"approved": 0, "edited": 0, "rejected": 0}
+    for row in rows:
+        action = row["human_action"]
+        counts[action] += 1
+        if action == "rejected":
+            # Same NOT_FOUND marker convention as everywhere else — a rejected
+            # answer must not ship, reviewed or not.
+            write_answer(ws, row["row_index"], column_map, "", None, "none")
+        elif action == "edited":
+            write_answer(ws, row["row_index"], column_map, row["reviewed_answer"] or "", row["vocab_selection"], row["final_confidence"])
+        else:  # approved
+            write_answer(ws, row["row_index"], column_map, row["drafted_answer"] or "", row["vocab_selection"], row["final_confidence"])
+
+    export_path = _reviewed_export_path(output_path)
+    export_path.parent.mkdir(parents=True, exist_ok=True)
+    workbook.save(export_path)
+
+    db.record_export(conn, run_id, str(export_path), counts)
+    return export_path
+
+
 def main():
     conn = get_conn()
 
     runs = conn.execute(
-        "SELECT id, source_path, created_at FROM questionnaire_runs ORDER BY created_at DESC"
+        "SELECT id, source_path, output_path, created_at FROM questionnaire_runs ORDER BY created_at DESC"
     ).fetchall()
     if not runs:
         st.info("No questionnaire runs found. Run `python -m src.pipeline answer ...` first.")
@@ -119,15 +161,13 @@ def main():
     run_options = {f"{r['source_path']}  —  {r['created_at']}": r["id"] for r in runs}
     selected = st.sidebar.selectbox("Run", list(run_options.keys()))
     run_id = run_options[selected]
-
-    filter_choice = st.sidebar.selectbox(
-        "Filter", ["All", "High", "Low", "Not found", "Error", "Unreviewed"]
-    )
+    run_row = next(r for r in runs if r["id"] == run_id)
 
     rows = conn.execute(
         """
         SELECT a.row_index, a.question_text, a.drafted_answer, a.reviewed_answer,
-               a.final_confidence, a.cited_chunk_ids, l.human_action, l.timestamp
+               a.vocab_selection, a.final_confidence, a.cited_chunk_ids,
+               l.human_action, l.timestamp
         FROM answers a
         LEFT JOIN audit_log l ON l.run_id = a.run_id AND l.row_index = a.row_index
         WHERE a.run_id = ?
@@ -138,6 +178,17 @@ def main():
 
     total = len(rows)
     reviewed_count = sum(1 for r in rows if r["human_action"])
+
+    all_reviewed = total > 0 and reviewed_count == total
+    export_label = "Export reviewed workbook" if all_reviewed else f"Export reviewed workbook ({reviewed_count}/{total} reviewed)"
+    if st.sidebar.button(export_label, disabled=not all_reviewed):
+        export_path = export_reviewed_workbook(conn, run_id, run_row["source_path"], run_row["output_path"], rows)
+        st.sidebar.success(f"Exported to {export_path}")
+
+    filter_choice = st.sidebar.selectbox(
+        "Filter", ["All", "High", "Low", "Not found", "Error", "Unreviewed"]
+    )
+
     st.progress(reviewed_count / total if total else 0.0)
     st.write(f"**{reviewed_count} / {total} rows reviewed**")
 
