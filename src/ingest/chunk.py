@@ -26,6 +26,23 @@ def _combine_loc_refs(first: str, last: str) -> str:
     return f"{first}–{last}"
 
 
+def normalize_whitespace(text: str) -> str:
+    """Collapse any run of whitespace, including source hard-wrap newlines, to a single space.
+
+    Source documents are routinely hard-wrapped at ~80-90 characters; without this, a
+    chunk's stored text carries a literal newline at each mid-sentence wrap point, which
+    breaks any exact-text comparison downstream even when the text reads as one normal
+    sentence. Confirmed directly: a model quoting a "verbatim" citation naturally
+    reproduces it with normal single spaces, not the source file's line-wrap points, so
+    the citation-grounding check in confidence.py was failing correct citations outright.
+    Applied once, here, at storage time — not just at the comparison site in
+    confidence.py — so every downstream consumer of chunk text (xlsx write-back, a future
+    review UI, this check) sees the same normalized form instead of each needing its own
+    ad hoc whitespace handling.
+    """
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _drop_front_matter(blocks: list[ParsedBlock]) -> list[ParsedBlock]:
     """Drop any leading run of blocks that precede the document's first heading.
 
@@ -60,11 +77,11 @@ def chunk_blocks(
     def flush():
         if not current_texts:
             return
-        text = "\n".join(current_texts)
+        text = normalize_whitespace("\n".join(current_texts))
         loc_ref = _combine_loc_refs(current_locs[0], current_locs[-1])
         if chunks and chunks[-1].heading_path == current_heading and len(chunks[-1].text) < min_chars:
             merged = chunks[-1]
-            merged.text = f"{merged.text}\n{text}"
+            merged.text = normalize_whitespace(f"{merged.text}\n{text}")
             merged.loc_ref = _combine_loc_refs(merged.loc_ref.split("–")[0], loc_ref.split("–")[-1])
             return
         chunks.append(Chunk(source_filename=source_filename, heading_path=current_heading or "", loc_ref=loc_ref, text=text))

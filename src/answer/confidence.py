@@ -23,6 +23,7 @@ actually separates.
 """
 
 from src.answer.generate import AnswerDraft
+from src.ingest.chunk import normalize_whitespace
 from src.retrieval.hybrid_search import RetrievedChunk
 
 WEAK_MATCH_DISTANCE = 0.3
@@ -32,8 +33,13 @@ def cross_check_confidence(draft: AnswerDraft, evidence_chunks: list[RetrievedCh
     if not draft.supported or draft.self_confidence == "none":
         return "none"
 
-    evidence_text = "\n".join(c.text for c in evidence_chunks)
-    ungrounded = [s for s in draft.cited_sentences if s.strip() and s.strip() not in evidence_text]
+    # Chunk text is normalized at storage time (src/ingest/chunk.py), but citations are
+    # normalized again here defensively — a model-quoted "verbatim" sentence has no
+    # source-file line-wrap artifacts to begin with, but may still have incidental extra
+    # whitespace, and this check must stay byte-exact-after-normalization, never fuzzy:
+    # a citation-fidelity check that tolerates paraphrase would stop catching invention.
+    evidence_text = normalize_whitespace("\n".join(c.text for c in evidence_chunks))
+    ungrounded = [s for s in draft.cited_sentences if s.strip() and normalize_whitespace(s) not in evidence_text]
     if not draft.cited_sentences or ungrounded:
         return "none"
 
