@@ -12,7 +12,7 @@ from dataclasses import dataclass
 
 from src.retrieval.hybrid_search import RetrievedChunk
 
-MODEL = "claude-opus-4-5-20251101"
+MODEL = "claude-sonnet-5"
 REQUEST_TIMEOUT_SECONDS = 30.0
 MAX_RETRIES = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
