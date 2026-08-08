@@ -71,6 +71,25 @@ were sourced and reviewed independently, in that order, with each stage committe
 separately. Full methodology in `fixtures/eval/LABELING_GUIDE.md`; every tuning
 decision and its data in `fixtures/eval/TUNING_LOG.md`.
 
+Reproduce these numbers yourself with:
+
+```
+python fixtures/eval/run_eval.py
+```
+
+This is the actual documented command, not a summary of one — earlier runs this
+session used one-off scripts that called the model directly, bypassing the CLI
+entirely, which meant the thing being measured wasn't quite the thing anyone would
+actually run. `run_eval.py` shells out to the real `python -m src.pipeline answer`
+against `fixtures/eval/questionnaire_eval.xlsx` (the same 20 questions as
+`questions.json`, generated from it by `fixtures/eval/make_eval_xlsx.py` so the two
+can't drift apart) and scores the result — the eval path and the CLI path are the
+same code. It prints the structural match (status/polarity vs. expected label) and
+every full answer for hand-scoring, and flags a `NOT_FOUND` question coming back
+`ANSWERED` as a regression on its own line, regardless of the total — it does not
+compute usable/needs-editing/wrong itself, since that's a deliberately hand-scored
+judgment call (see the methodology above), not something to automate.
+
 ### The number: 60% → 65% usable, honestly
 
 Every one of the 20 answers was read — not pattern-matched against the label — and
@@ -387,8 +406,12 @@ each fixture file.
 
 `fixtures/eval/` holds the eval harness: `questions.json` (the 20 labeled questions
 behind the results above), `LABELING_GUIDE.md` (labeling methodology and the
-anti-mirror sourcing rules), and `TUNING_LOG.md` (every tuning pass, including the
-ones that found no safe change to make). The eval questions are quoted verbatim from
-the real CSA CAIQ v4.0.2 instrument under fair use with attribution — see the
-licensing section in `LABELING_GUIDE.md` for what is and isn't safe to commit from
-that source.
+anti-mirror sourcing rules), `TUNING_LOG.md` (every tuning pass, including the ones
+that found no safe change to make), `questionnaire_eval.xlsx` (the same 20 questions
+as an actual questionnaire workbook, generated from `questions.json` by
+`make_eval_xlsx.py` — lets the eval set run through the real CLI, and doubles as a
+20-row demo questionnaire instead of the 6-row sample), and `run_eval.py` (the
+reproducible command behind the Eval results section above). The eval questions are
+quoted verbatim from the real CSA CAIQ v4.0.2 instrument under fair use with
+attribution — see the licensing section in `LABELING_GUIDE.md` for what is and isn't
+safe to commit from that source.
