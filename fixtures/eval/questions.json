@@ -1,26 +1,126 @@
 {
   "_attribution": "Question text quoted verbatim from the Cloud Security Alliance (CSA) Consensus Assessments Initiative Questionnaire (CAIQ) v4.0.2, © Cloud Security Alliance. This is a small selection (20 of ~262 real questions) reproduced under fair use with attribution, per fixtures/eval/LABELING_GUIDE.md's licensing section — the full extracted question pool is never committed to this repo.",
-  "_shape_note": "expected_label and notes are filled in a separate commit, after this one, per the three-commit fixture order in LABELING_GUIDE.md (evidence, then questions, then labels) — labels are ground truth decided independently and must not be inferred from what the system outputs.",
+  "_shape_note": "Third of the three-commit fixture order (evidence, questions, labels). expected_label and notes below are the ground-truth labels, decided independently of and before any pipeline run against these questions — see the anti-mirror methodology in LABELING_GUIDE.md.",
   "questions": [
-    {"source_id": "IVS-03.2", "question_text": "Are communications between environments encrypted?", "expected_label": null, "notes": null},
-    {"source_id": "BCR-08.1", "question_text": "Is cloud data periodically backed up?", "expected_label": null, "notes": null},
-    {"source_id": "IAM-08.1", "question_text": "Are reviews and revalidation of user access for least privilege and separation of duties completed with a frequency commensurate with organizational risk tolerance?", "expected_label": null, "notes": null},
-    {"source_id": "IAM-13.1", "question_text": "Are processes, procedures, and technical measures that ensure users are identifiable through unique identification (or can associate individuals with user identification usage) defined, implemented, and evaluated?", "expected_label": null, "notes": null},
-    {"source_id": "BCR-03.1", "question_text": "Are strategies developed to reduce the impact of, withstand, and recover from business disruptions in accordance with risk appetite?", "expected_label": null, "notes": null},
-    {"source_id": "SEF-06.1", "question_text": "Are processes, procedures, and technical measures supporting business processes to triage security-related events defined, implemented, and evaluated?", "expected_label": null, "notes": null},
-    {"source_id": "UEM-13.1", "question_text": "Are processes, procedures, and technical measures defined, implemented, and evaluated to enable remote company data deletion on managed endpoint devices?", "expected_label": null, "notes": null},
-    {"source_id": "CEK-08.1", "question_text": "Are CSPs providing CSCs with the capacity to manage their own data encryption keys?", "expected_label": null, "notes": null},
-    {"source_id": "STA-09.1", "question_text": "Do service agreements between CSPs and CSCs (tenants) incorporate at least the following mutually agreed upon provisions and/or terms? • Scope, characteristics, and location of business relationship and services offered • Information security requirements (including SSRM) • Change management process • Logging and monitoring capability • Incident management and communication procedures • Right to audit and third-party assessment • Service termination • Interoperability and portability requirements • Data privacy", "expected_label": null, "notes": null},
-    {"source_id": "BCR-08.2", "question_text": "Is the confidentiality, integrity, and availability of backup data ensured?", "expected_label": null, "notes": null},
-    {"source_id": "CEK-01.1", "question_text": "Are cryptography, encryption, and key management policies and procedures established, documented, approved, communicated, applied, evaluated, and maintained?", "expected_label": null, "notes": null},
-    {"source_id": "SEF-02.1", "question_text": "Are policies and procedures for timely management of security incidents established, documented, approved, communicated, applied, evaluated, and maintained?", "expected_label": null, "notes": null},
-    {"source_id": "LOG-12.1", "question_text": "Is physical access logged and monitored using an auditable access control system?", "expected_label": null, "notes": null},
-    {"source_id": "A&A-02.1", "question_text": "Are independent audit and assurance assessments conducted according to relevant standards at least annually?", "expected_label": null, "notes": null},
-    {"source_id": "HRS-01.1", "question_text": "Are background verification policies and procedures of all new employees (including but not limited to remote employees, contractors, and third parties) established, documented, approved, communicated, applied, evaluated, and maintained?", "expected_label": null, "notes": null},
-    {"source_id": "DSP-14.1", "question_text": "Are processes, procedures, and technical measures defined, implemented, and evaluated to disclose details to the data owner of any personal or sensitive data access by sub-processors before processing initiation?", "expected_label": null, "notes": null},
-    {"source_id": "BCR-08.3", "question_text": "Can backups be restored appropriately for resiliency?", "expected_label": null, "notes": null},
-    {"source_id": "SEF-07.1", "question_text": "Are processes, procedures, and technical measures for security breach notifications defined and implemented?", "expected_label": null, "notes": null},
-    {"source_id": "IAM-15.1", "question_text": "Are processes, procedures, and technical measures for the secure management of passwords defined, implemented, and evaluated?", "expected_label": null, "notes": null},
-    {"source_id": "IAM-14.1", "question_text": "Are processes, procedures, and technical measures for authenticating access to systems, application, and data assets including multifactor authentication for a least-privileged user and sensitive data access defined, implemented, and evaluated?", "expected_label": null, "notes": null}
+    {
+      "source_id": "IVS-03.2",
+      "question_text": "Are communications between environments encrypted?",
+      "expected_label": "ANSWERED_AFFIRMS",
+      "notes": "Evidence: access_control_policy.md > Encryption > Encryption in transit ('encrypted in transit using TLS 1.2 or higher... mutual TLS'). Retrieval verified clean: rank 1, dist 0.249."
+    },
+    {
+      "source_id": "BCR-08.1",
+      "question_text": "Is cloud data periodically backed up?",
+      "expected_label": "ANSWERED_AFFIRMS",
+      "notes": "Evidence: business_continuity_plan.docx > Backup Strategy ('backed up hourly with 30-day retention'). Retrieval verified clean: rank 1, dist 0.249."
+    },
+    {
+      "source_id": "IAM-08.1",
+      "question_text": "Are reviews and revalidation of user access for least privilege and separation of duties completed with a frequency commensurate with organizational risk tolerance?",
+      "expected_label": "ANSWERED_AFFIRMS",
+      "notes": "Evidence: access_control_policy.md > Access Reviews ('reviewed quarterly by the security team... auto-disabled after 90 days'). This evidence has the best raw vector distance of any buried AFFIRMS pick (0.287, under WEAK_MATCH_DISTANCE=0.3) but hybrid BM25/RRF reranking buries it at rank 6 of 14 candidates — a reranking/keyword-mismatch bug, not a retrieval-quality problem. Kept deliberately as an AFFIRMS test the current system is expected to fail; a wrong baseline answer here is a retrieval finding, not grounds to relabel."
+    },
+    {
+      "source_id": "IAM-13.1",
+      "question_text": "Are processes, procedures, and technical measures that ensure users are identifiable through unique identification (or can associate individuals with user identification usage) defined, implemented, and evaluated?",
+      "expected_label": "ANSWERED_AFFIRMS",
+      "notes": "Evidence: access_control_policy.md > Authentication ('Shared accounts are prohibited'). Buried at rank 2, dist 0.401 — a weak vector match even before reranking, since the evidence sentence is short and shares little vocabulary with 'unique identification' phrasing. Kept deliberately; expect the baseline to plausibly miss this one."
+    },
+    {
+      "source_id": "BCR-03.1",
+      "question_text": "Are strategies developed to reduce the impact of, withstand, and recover from business disruptions in accordance with risk appetite?",
+      "expected_label": "ANSWERED_AFFIRMS",
+      "notes": "Evidence: business_continuity_plan.docx > Disaster Recovery (failover to a warm standby environment, RTO 4h, RPO 1h). Buried at rank 3, dist 0.412 — abstract, policy-register question phrasing doesn't embed close to concrete operational evidence (RTO/RPO numbers). Distinct root cause from the BM25 reranking cases above: an embedding/chunking mismatch, likely needs different chunking or embedding model, not a reranking tweak."
+    },
+    {
+      "source_id": "SEF-06.1",
+      "question_text": "Are processes, procedures, and technical measures supporting business processes to triage security-related events defined, implemented, and evaluated?",
+      "expected_label": "ANSWERED_AFFIRMS",
+      "notes": "Evidence: business_continuity_plan.docx > Incident Response > Escalation ('triaged by the on-call engineer within 15 minutes... escalated to the security lead if high severity'). Buried at rank 2, dist 0.407, losing a close BM25/RRF race to an unrelated Equipment Return chunk (dist 0.410 but ranked 1st). Kept deliberately."
+    },
+    {
+      "source_id": "UEM-13.1",
+      "question_text": "Are processes, procedures, and technical measures defined, implemented, and evaluated to enable remote company data deletion on managed endpoint devices?",
+      "expected_label": "ANSWERED_AFFIRMS",
+      "notes": "Evidence: it_operations_standards.md > Equipment Return ('devices not returned... are remotely wiped via MDM'). Buried at rank 4, dist 0.346 — top-1 was a different, wrong section (VPN Access) entirely. Caught only by mechanical retrieval verification; an earlier inspection-only pass in this project wrongly called this pick 'clean' because something retrieved from the right document, not the section that actually supports the answer."
+    },
+    {
+      "source_id": "CEK-08.1",
+      "question_text": "Are CSPs providing CSCs with the capacity to manage their own data encryption keys?",
+      "expected_label": "ANSWERED_DENIES",
+      "notes": "Evidence: access_control_policy.md > Encryption > Encryption at rest ('Customers do not have the ability to manage their own encryption keys; all key management is performed internally by the security team'). That sentence was added deliberately to the corpus to give this specific real CAIQ question an honest documented-negative answer — see the access_control_policy.md commit. ANSWERED_DENIES is structurally rare against CAIQ (see LABELING_GUIDE.md's rarity note); this is the one constructed case, not a naturally-occurring find."
+    },
+    {
+      "source_id": "STA-09.1",
+      "question_text": "Do service agreements between CSPs and CSCs (tenants) incorporate at least the following mutually agreed upon provisions and/or terms? • Scope, characteristics, and location of business relationship and services offered • Information security requirements (including SSRM) • Change management process • Logging and monitoring capability • Incident management and communication procedures • Right to audit and third-party assessment • Service termination • Interoperability and portability requirements • Data privacy",
+      "expected_label": "ANSWERED_PARTIAL",
+      "notes": "PARTIAL flavor: compound-question. Nine distinct clauses; corpus evidence speaks to only a subset (encryption, access control, incident escalation touch a few) and says nothing at all about contractual/SLA-type clauses (service termination, interoperability, right to audit). Tests whether the system explicitly names what's unaddressed rather than silently answering only the covered part."
+    },
+    {
+      "source_id": "BCR-08.2",
+      "question_text": "Is the confidentiality, integrity, and availability of backup data ensured?",
+      "expected_label": "ANSWERED_PARTIAL",
+      "notes": "PARTIAL flavor: scope-mismatch. Corpus documents backup availability/durability (hourly frequency, 30-day retention, geo-redundant storage) but never addresses confidentiality or integrity of the backup data itself (no mention of backup encryption or integrity verification). A single-topic question broader than what's documented — a retrieval/corpus-coverage gap, distinct from the governance-gap cases below."
+    },
+    {
+      "source_id": "CEK-01.1",
+      "question_text": "Are cryptography, encryption, and key management policies and procedures established, documented, approved, communicated, applied, evaluated, and maintained?",
+      "expected_label": "ANSWERED_PARTIAL",
+      "notes": "PARTIAL flavor: governance-gap (1 of 2). Corpus documents that encryption is applied (AES-256 at rest, TLS/mTLS in transit) but nothing about the policy-lifecycle layer actually asked about (established/documented/approved/communicated/evaluated/maintained). Known corpus artifact: both evidence documents are operational-only with zero governance/policy-review content — see LABELING_GUIDE.md. This and SEF-02.1 deliberately measure the same corpus limitation twice; accepted, not hidden."
+    },
+    {
+      "source_id": "SEF-02.1",
+      "question_text": "Are policies and procedures for timely management of security incidents established, documented, approved, communicated, applied, evaluated, and maintained?",
+      "expected_label": "ANSWERED_PARTIAL",
+      "notes": "PARTIAL flavor: governance-gap (2 of 2). Same pattern as CEK-01.1 on a different control: corpus documents that incident triage/escalation operationally happens (Incident Response > Escalation) but nothing about the policy-lifecycle layer (a documented, approved, periodically-reviewed incident management policy). See LABELING_GUIDE.md for why doubling this flavor is deliberate rather than an accident of corpus construction."
+    },
+    {
+      "source_id": "LOG-12.1",
+      "question_text": "Is physical access logged and monitored using an auditable access control system?",
+      "expected_label": "NOT_FOUND",
+      "notes": "NOT_FOUND flavor: easy. Physical access logging/badging is never mentioned anywhere in the corpus, verified by direct text search as well as retrieval distance. True silence, not a near-miss."
+    },
+    {
+      "source_id": "A&A-02.1",
+      "question_text": "Are independent audit and assurance assessments conducted according to relevant standards at least annually?",
+      "expected_label": "NOT_FOUND",
+      "notes": "NOT_FOUND flavor: easy. Independent third-party audit/assurance assessments are never mentioned. Watch during the baseline run: the only other use of the word 'audit' in the corpus (it_operations_standards.md's 'periodic asset audits') is a different sense entirely (IT asset inventory checks, not compliance audits) — possible BM25 keyword-overlap false near-miss worth checking even though the topics are unrelated."
+    },
+    {
+      "source_id": "HRS-01.1",
+      "question_text": "Are background verification policies and procedures of all new employees (including but not limited to remote employees, contractors, and third parties) established, documented, approved, communicated, applied, evaluated, and maintained?",
+      "expected_label": "NOT_FOUND",
+      "notes": "NOT_FOUND flavor: easy. Background checks/verification for new hires are never mentioned anywhere in the corpus."
+    },
+    {
+      "source_id": "DSP-14.1",
+      "question_text": "Are processes, procedures, and technical measures defined, implemented, and evaluated to disclose details to the data owner of any personal or sensitive data access by sub-processors before processing initiation?",
+      "expected_label": "NOT_FOUND",
+      "notes": "NOT_FOUND flavor: easy. Sub-processor/vendor data access is never mentioned anywhere in the corpus — no vendor or sub-processor content exists at all."
+    },
+    {
+      "source_id": "BCR-08.3",
+      "question_text": "Can backups be restored appropriately for resiliency?",
+      "expected_label": "NOT_FOUND",
+      "notes": "NOT_FOUND flavor: calibration. Corpus documents backup frequency/retention/location (Backup Strategy) but never mentions restore testing or validation — a human reading only that evidence could not write a correct sentence answering whether backups can be restored. Retrieval verified clean: rank 1, same Backup Strategy chunk BCR-08.1's AFFIRMS answer comes from, dist 0.321 — right at WEAK_MATCH_DISTANCE (0.3), which is the entire point of this pick: it actually exercises the threshold instead of sitting safely past it."
+    },
+    {
+      "source_id": "SEF-07.1",
+      "question_text": "Are processes, procedures, and technical measures for security breach notifications defined and implemented?",
+      "expected_label": "NOT_FOUND",
+      "notes": "NOT_FOUND flavor: calibration. Corpus documents incident triage/escalation (Incident Response > Escalation) but never mentions notifying affected parties or regulators of a breach. Retrieval verified clean: rank 1, dist 0.399 — but only after fixing the boilerplate front-matter chunking bug; before that fix this pick was retrieving the synthetic-notice chunk as a false top-1 distractor instead of the genuine near-miss it's designed to be."
+    },
+    {
+      "source_id": "IAM-15.1",
+      "question_text": "Are processes, procedures, and technical measures for the secure management of passwords defined, implemented, and evaluated?",
+      "expected_label": "AMBIGUOUS_EVIDENCE",
+      "notes": "Contradiction type: parameter conflict. access_control_policy.md states passwords rotate every 180 days; it_operations_standards.md states every 90 days. Same control, same parameter, both stated as flat fact, neither dated nor marked draft/authoritative — genuinely irreconcilable. Expected system behavior (generate.py rule 8): surface both cited claims with their sources, do not pick one or average, self_confidence='low', polarity='partial', which routes to the existing human-review flag in write_xlsx.py. Score leniently per LABELING_GUIDE.md — the bar is surfacing both claims, not an exact status match."
+    },
+    {
+      "source_id": "IAM-14.1",
+      "question_text": "Are processes, procedures, and technical measures for authenticating access to systems, application, and data assets including multifactor authentication for a least-privileged user and sensitive data access defined, implemented, and evaluated?",
+      "expected_label": "AMBIGUOUS_EVIDENCE",
+      "notes": "Contradiction type: scope/coverage conflict, deliberately harder than IAM-15.1's numeric one. access_control_policy.md states all employee accounts require MFA; it_operations_standards.md states MFA applies only to administrative/privileged accounts, with standard accounts using SSO instead. Both assertive, mutually exclusive on coverage, not a number — a model that reads 'admins' as a subset of 'all employees' rather than noticing the explicit carve-out will smooth this into a false-confident single answer, which is exactly the failure this fixture exists to catch. Same expected behavior and scoring bar as IAM-15.1 above."
+    }
   ]
 }
