@@ -46,14 +46,25 @@ documents, giving incompatible answers to the same control)?
 
 - If **yes** → label `AMBIGUOUS_EVIDENCE`. This is a data-quality problem, not a
   coverage problem — the fix is fixing the evidence base, not writing a better prompt.
-  The system has no dedicated handling for this today (`self_confidence` has no
-  "contradictory" value); include these questions anyway as a stress test, and score
-  the system leniently for now — the bar is "did it avoid confidently asserting one
-  side," not an exact status match. Do not rush to implement handling for this: two
-  fixtures of contradictory evidence is not enough signal to design a resolution
-  strategy, and the honest v1 behavior is probably "flag for a human" rather than the
-  system picking a side on its own. Flag this gap for a future slice instead of
-  retrofitting a code-level fix while writing labels.
+
+  **Handling decision (made deliberately, not deferred):** without an explicit
+  instruction, the system prompt's default behavior ("answer only from the supplied
+  text") does not stop the model from *synthesizing* a single coherent answer out of
+  two contradictory passages — that's the exact failure this label exists to catch,
+  and it would happen silently. `generate.py`'s system prompt has an explicit rule
+  (rule 8) requiring the model to state both conflicting claims with their sources
+  rather than resolve them, and to self-report `self_confidence="low"`. There is
+  deliberately no new status/confidence enum value for "contradictory" this slice —
+  it's mapped onto the existing `polarity="partial"` + `self_confidence="low"` path,
+  which already routes through the existing flag-for-human-review cell (yellow fill +
+  comment) in `write_xlsx.py`. This is a real, if approximate, fit: a contradiction
+  genuinely isn't a coherent complete answer either. Score these two fixtures
+  leniently — the bar is "did it surface both claims and flag for review, not silently
+  pick one," not an exact status match. A dedicated `AMBIGUOUS_EVIDENCE`-shaped status
+  (distinct from ordinary `low`) is still a reasonable future refinement once more than
+  two fixtures exist to design against — this slice deliberately does the smallest
+  change that makes the two fixtures below actually test something, not the complete
+  version of conflict handling.
 
 **3. Does the question have multiple explicit parts, or ask about a broader scope than
 the evidence covers** (compound question: "do you do X, and how often is Y done" where
@@ -154,10 +165,38 @@ about retrieval or answer quality. Target mix, decided before fetching:
     two, the eval only samples the easy end of the distance distribution and would
     report the threshold as well-calibrated when it's only been tested where it can't
     fail.
-- 2x `AMBIGUOUS_EVIDENCE` — deliberately held open. A real contradiction (same
-  control, two documents, genuinely irreconcilable — not one document merely being
-  vaguer than the other) needs its own careful design pass, not to be bundled in
-  alongside 18 other picks.
+- 2x `AMBIGUOUS_EVIDENCE` — finalized in a dedicated pass (not bundled with the other
+  18). Both are genuine contradictions: same control, two documents, both assertive,
+  neither dated nor marked as draft/superseding (no way to resolve by recency or
+  authority), and the two cases differ in kind from each other:
+
+  - **`IAM-15.1`** ("secure management of passwords") — a **parameter** conflict.
+    `access_control_policy.md` states passwords rotate every 180 days;
+    `it_operations_standards.md` (new fixture doc) states every 90 days. Same
+    quantity, same control, flatly incompatible.
+  - **`IAM-14.1`** ("MFA for least-privileged user and sensitive data access") — a
+    **scope/coverage** conflict, deliberately harder than the parameter case: the
+    disagreement isn't a number but which accounts a control applies to.
+    `access_control_policy.md` states all employee accounts require MFA;
+    `it_operations_standards.md` states MFA applies only to administrative/privileged
+    accounts, with standard accounts authenticating via SSO instead. A model that
+    isn't careful can read these as compatible ("admins are a subset of all
+    employees") when they're actually mutually exclusive — doc A claims *every*
+    account, doc B explicitly carves standard accounts out. This is the case most
+    likely to get smoothed into a false-confident single answer, which is exactly why
+    it's here.
+
+  `IAM-14.1` was originally slated for `ANSWERED_AFFIRMS`; reassigned here because its
+  real question text ("MFA for least-privileged user and sensitive data access") fits
+  the scope-conflict case better than a plain affirmation, and because it was one of
+  three `ANSWERED_AFFIRMS` questions all landing on the same short Authentication
+  paragraph — pulling it out also fixes that clustering (down to two: `IAM-02.1`,
+  `IAM-13.1`). `ANSWERED_AFFIRMS` needs a 7th pick to backfill; not yet chosen.
+
+  `it_operations_standards.md` must contain enough unrelated real-looking content
+  around the two conflicting paragraphs that retrieval isn't trivially handed only the
+  contradiction — a document that's nothing but the two conflicting sentences makes
+  the test easier than a real evidence pack would be.
 
 To hit this: select CAIQ/VSAQ questions to fit the mix, and where there aren't enough
 naturally-answerable real questions for the corpus as it stands, **expand the evidence
