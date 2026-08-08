@@ -13,6 +13,20 @@ This is a CLI pipeline. There is no web UI, no review interface, and no write-ba
 human-approved answers into the evidence base yet — see "What's deliberately not built
 yet" below for why, and in what order that's likely to change.
 
+### Results at a glance
+
+Measured against 20 real security-questionnaire questions with known-correct answers
+(see "Eval results" below for the full breakdown):
+
+| | Count | |
+|---|---|---|
+| ✅ Answered correctly | 13 / 20 | Ready to send, or flagged for a quick human check |
+| ⚠️ Wrong but plausible-sounding | **0 / 20** | The failure mode this tool is built to eliminate |
+| 🚫 Abstained (said "not found" instead of guessing) | 7 / 20 | Safe, honest gaps — never a fabricated answer |
+
+Every abstention has a known, specific cause — see the failure taxonomy in "Eval
+results" below. None of them is the system guessing wrong.
+
 ## The core design constraint: this tool does not fabricate answers
 
 A wrong answer on a security questionnaire isn't a typo — it's a written
