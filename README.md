@@ -1,3 +1,5 @@
+![Demo](docs/demo.gif)
+
 # Vendor Security Questionnaire Responder
 
 Companies that sell to other businesses regularly get handed a long spreadsheet of
