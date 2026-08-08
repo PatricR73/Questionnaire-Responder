@@ -10,6 +10,13 @@ from src.store.vectorstore import VectorStore
 
 RRF_K = 60  # standard reciprocal-rank-fusion constant
 CANDIDATE_POOL = 20  # how many results each retriever contributes before fusion
+# Tuning pass 2 (see fixtures/eval/TUNING_LOG.md): equal weighting let BM25 term
+# mismatch bury chunks with excellent vector distance (rank 1, well under the
+# confidence threshold) at combined rank 6-7, outside the top-5 the model receives.
+# 2.0 was the smallest value giving both known cases solid margin rather than landing
+# right at the top_k=5 cutoff edge; verified empirically against the full eval set,
+# not chosen analytically.
+VECTOR_WEIGHT = 2.0
 
 
 @dataclass
@@ -50,7 +57,7 @@ class HybridSearcher:
         for rank, cid in enumerate(bm25_ranked):
             rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (RRF_K + rank + 1)
         for rank, cid in enumerate(vector_ranked):
-            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (RRF_K + rank + 1)
+            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + VECTOR_WEIGHT * (1.0 / (RRF_K + rank + 1))
 
         top_ids = sorted(rrf_scores.keys(), key=lambda cid: -rrf_scores[cid])[:top_k]
 
