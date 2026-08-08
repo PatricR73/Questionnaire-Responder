@@ -150,21 +150,79 @@ two-document synthetic corpus, so pulling questions unfiltered will skew heavily
 toward `NOT_FOUND` — that measures abstention almost exclusively and says nothing
 about retrieval or answer quality. Target mix, decided before fetching:
 
-- 7x `ANSWERED_AFFIRMS`
+- 7x `ANSWERED_AFFIRMS`: `IVS-03.2`, `BCR-08.1`, `IAM-08.1`, `IAM-13.1`, `BCR-03.1`,
+  `SEF-06.1`, `UEM-13.1` — seven distinct evidence sections, none shared by two
+  questions (see the retrieval-verification table below; `IAM-02.1` was dropped from
+  an earlier draft of this list — its question text is the same "established,
+  documented, approved, communicated, ..., maintained" policy-lifecycle template as
+  the two `governance-gap` `PARTIAL` cases, and this corpus has no governance-layer
+  content to answer that template with, so it isn't a real `AFFIRMS`).
 - 1x `ANSWERED_DENIES` (dropped from an originally-planned 3 — see the rarity note above)
 - 4x `ANSWERED_PARTIAL`: 1 compound, 1 scope-mismatch, 2 governance-gap (see above —
   the 2 governance-gap slots deliberately measure the same corpus limitation twice)
 - 6x `NOT_FOUND`, split as:
   - 4x easy (no nearby evidence at all — fully unrelated to anything the corpus covers)
+  - 4x easy: `LOG-12.1`, `A&A-02.1`, `HRS-01.1`, `DSP-14.1` — verified against the real
+    corpus (not assumed): none of these topics (physical access logging, independent
+    audit assessments, background checks, sub-processor data disclosure) appear
+    anywhere in the three evidence documents.
   - 2x **calibration** (a genuine near-miss: a control adjacent to but distinct from
     what the corpus documents, so retrieval lands close to `WEAK_MATCH_DISTANCE`
-    rather than far past it). Concretely: pick CAIQ/VSAQ questions whose topic the
-    corpus covers *adjacently but not actually* — e.g. a question about vulnerability
-    disclosure when the corpus documents patch management, or a question about
-    subprocessor audits when the corpus documents vendor onboarding. Without these
-    two, the eval only samples the easy end of the distance distribution and would
-    report the threshold as well-calibrated when it's only been tested where it can't
-    fail.
+    rather than far past it): `BCR-08.3` ("can backups be restored appropriately for
+    resiliency?" — corpus documents backup frequency/retention/location, never restore
+    testing; rank 1, dist 0.321, right at the 0.3 threshold as intended) and `SEF-07.1`
+    ("are processes for security breach notification defined?" — corpus documents
+    incident triage/escalation, never notifying affected parties/regulators; rank 1,
+    dist 0.399). Without these two, the eval only samples the easy end of the distance
+    distribution and would report the threshold as well-calibrated when it's only been
+    tested where it can't fail.
+
+### Retrieval verification (mechanical, not by inspection)
+
+Every `AFFIRMS`/calibration pick above was checked against the actual running
+retriever (`HybridSearcher`, post `ingest`) — not assumed correct from reading the
+source documents. That check caught real problems inspection missed, twice: `IAM-02.1`
+looked fine by text but was a mislabel (see above), and an early pass had wrongly
+called `UEM-13.1` a clean rank-1 match because *something* was retrieved from the same
+document — it wasn't the section that actually supports the answer. Trust the query,
+not the read.
+
+| Control | Rank of the chunk that actually supports the answer | Vector distance | Note |
+|---|---|---|---|
+| `IVS-03.2` | 1 | 0.249 | clean |
+| `BCR-08.1` | 1 | 0.249 | clean |
+| `BCR-08.3` (calibration) | 1 | 0.321 | clean, right at threshold as intended |
+| `SEF-07.1` (calibration) | 1 | 0.399 | clean *after* the boilerplate-chunk fix — the notice chunk was winning instead before that |
+| `IAM-13.1` | 2 | 0.401 | buried — weak vector match even before reranking |
+| `SEF-06.1` | 2 | 0.407 | buried — loses a close BM25 race to an unrelated chunk |
+| `BCR-03.1` | 3 | 0.412 | buried — abstract policy phrasing doesn't embed near concrete RTO/RPO evidence |
+| `UEM-13.1` | 4 | 0.346 | buried — top-1 was a different, wrong section entirely |
+| `IAM-08.1` | 6 | 0.287 | buried worst, despite the *best* raw vector distance of this group |
+
+**Kept deliberately, not re-picked.** Every buried row above has real, on-topic
+evidence a human would find — that's what makes `ANSWERED_AFFIRMS` the correct label.
+That current retrieval doesn't surface it is a system finding, not a fixture defect.
+Swapping these for questions retrieval already handles well would tune the eval
+questions to the system instead of the system to the questions — a benchmark that
+can only ever pass. The baseline run is expected to score several of these wrong;
+that's the harness doing its job.
+
+Two distinct root causes are visible in the buried rows above, worth keeping separate
+rather than reading as one generic "retrieval is imperfect" finding:
+
+- **BM25/RRF reranking damage** (`IAM-08.1`, and to a lesser extent `SEF-06.1`):
+  `IAM-08.1`'s correct chunk has the *best* vector distance of any buried row (0.287,
+  under `WEAK_MATCH_DISTANCE`) but the hybrid reranking still buries it at rank 6 —
+  keyword mismatch between the CAIQ phrasing and the evidence text outweighs a strong
+  semantic match. Likely a quick, mechanical fix (e.g. reweighting RRF toward the
+  vector rank, or a smarter BM25 tokenizer) once there's a slice to spend on retrieval
+  tuning.
+- **Embedding/chunking mismatch** (`BCR-03.1`, `UEM-13.1`): abstract, policy-register
+  question phrasing doesn't embed close to concrete, operational evidence text (RTO/RPO
+  numbers, an MDM remote-wipe sentence) even with no reranking involved. Not a quick
+  parameter fix — likely needs either different chunking (shorter, more targeted
+  chunks) or a different embedding model, and is worth its own investigation rather
+  than folding into the BM25 fix above.
 - 2x `AMBIGUOUS_EVIDENCE` — finalized in a dedicated pass (not bundled with the other
   18). Both are genuine contradictions: same control, two documents, both assertive,
   neither dated nor marked as draft/superseding (no way to resolve by recency or
@@ -190,8 +248,10 @@ about retrieval or answer quality. Target mix, decided before fetching:
   real question text ("MFA for least-privileged user and sensitive data access") fits
   the scope-conflict case better than a plain affirmation, and because it was one of
   three `ANSWERED_AFFIRMS` questions all landing on the same short Authentication
-  paragraph — pulling it out also fixes that clustering (down to two: `IAM-02.1`,
-  `IAM-13.1`). `ANSWERED_AFFIRMS` needs a 7th pick to backfill; not yet chosen.
+  paragraph — pulling it out helped fix that clustering. The final `ANSWERED_AFFIRMS`
+  backfill (`IAM-08.1`, `IAM-13.1`, `BCR-03.1`, `SEF-06.1`, `UEM-13.1`, plus the two
+  originally-clean picks `IVS-03.2`/`BCR-08.1`) lands on seven distinct evidence
+  sections across all three documents — see the retrieval-verification table below.
 
   `it_operations_standards.md` must contain enough unrelated real-looking content
   around the two conflicting paragraphs that retrieval isn't trivially handed only the
