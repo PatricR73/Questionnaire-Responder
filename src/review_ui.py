@@ -12,6 +12,14 @@ it, and overwriting it would make past baselines unreproducible.
 """
 
 import json
+import sys
+from pathlib import Path
+
+# `streamlit run` execs this file directly and only adds this file's own directory
+# (src/) to sys.path, not the project root — so `from src.store import db` below
+# fails with ModuleNotFoundError unless the project root is added first. Must run
+# before the src.* imports.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import streamlit as st
 

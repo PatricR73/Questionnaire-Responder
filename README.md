@@ -287,6 +287,22 @@ export ANTHROPIC_API_KEY=sk-ant-...
 or put it in a local `.env` file (already covered by `.gitignore` — never commit it)
 and load it before running, e.g. `set -a; source .env; set +a`.
 
+### 3. Review a completed run
+
+```
+streamlit run src/review_ui.py
+```
+
+Run this from anywhere — it works from a fresh clone with no extra setup (`pip
+install -r requirements.txt` already covers it). This is a read-and-review surface
+over the SQLite tables an `answer` run already wrote; it makes no Anthropic API calls
+and doesn't re-run retrieval or generation. Pick a run in the sidebar, and for each
+question you get the drafted answer side by side with the verbatim cited evidence
+(source file + heading path), a confidence badge, and Approve / Edit / Reject buttons.
+Approve/Reject record the decision; Edit saves your corrected text separately from the
+model's original answer, so the eval-harness baselines above stay reproducible against
+what the model actually produced.
+
 ## What's deliberately not built yet, and why
 
 Each of these was scoped out on purpose, not forgotten — building the core pipeline
@@ -357,6 +373,11 @@ one-time embedding model download.
 regression tests for two of the three bugs the eval harness caught (see "Eval
 results" above) — both built from the actual failing data the bug produced, not a
 hypothetical case.
+
+`tests/test_review_ui_entrypoint.py` executes `src/review_ui.py` under Streamlit's
+actual `sys.path` setup (not just a curl against the running server, which never
+triggers real script execution and would not have caught this) — regression test for
+`streamlit run src/review_ui.py` failing with `ModuleNotFoundError` on a fresh clone.
 
 ## Fixtures
 
