@@ -189,8 +189,8 @@ and doesn't re-run retrieval or generation. Pick a run in the sidebar, and for e
 question you get the drafted answer side by side with the verbatim cited evidence
 (source file + heading path), a confidence badge, and Approve / Edit / Reject buttons.
 Approve/Reject record the decision; Edit saves your corrected text separately from the
-model's original answer, so the eval-harness baselines above stay reproducible against
-what the model actually produced.
+model's original answer, so the eval-harness baselines in [`EVAL.md`](EVAL.md) stay
+reproducible against what the model actually produced.
 
 ## What's deliberately not built yet, and why
 
@@ -222,12 +222,13 @@ wishlist:
 1. **A confidence signal that isn't a single flat distance threshold.** This is what
    6 of the 7 remaining wrong answers trace back to, and the eval data shows
    conclusively that no value of `WEAK_MATCH_DISTANCE` fixes it for this corpus (see
-   the threshold finding above) — the "weak but real" and "genuinely absent" distance
-   clusters overlap. Likely needs a larger, more varied corpus to find a real
-   separation point, a different signal entirely (e.g. distance of the specific cited
-   chunk rather than the best distance across everything retrieved), or both.
+   the threshold finding in [`EVAL.md`](EVAL.md)) — the "weak but real" and "genuinely
+   absent" distance clusters overlap. Likely needs a larger, more varied corpus to find
+   a real separation point, a different signal entirely (e.g. distance of the specific
+   cited chunk rather than the best distance across everything retrieved), or both.
 2. **Real compound-question splitting.** The other remaining wrong case, and the only
-   one not blocked by the threshold problem above — independently fixable now.
+   one not blocked by the threshold problem described in [`EVAL.md`](EVAL.md) —
+   independently fixable now.
 3. **Expand the eval corpus.** Both the threshold redesign above and any future
    retrieval/prompt change need a bigger, more diverse fixture set to measure against
    than 20 questions over 3 documents; this baseline is deliberately small and honest
@@ -253,9 +254,9 @@ one-time embedding model download.
 `AnthropicAnswerer` raises rather than degrading when no API key is set.
 
 `tests/test_whitespace_normalization.py` and `tests/test_malformed_response.py` are
-regression tests for two of the three bugs the eval harness caught (see "Eval
-results" above) — both built from the actual failing data the bug produced, not a
-hypothetical case.
+regression tests for two of the three bugs the eval harness caught (see
+[`EVAL.md`](EVAL.md)) — both built from the actual failing data the bug produced, not
+a hypothetical case.
 
 `tests/test_review_ui_entrypoint.py` executes `src/review_ui.py` under Streamlit's
 actual `sys.path` setup (not just a curl against the running server, which never
@@ -275,7 +276,7 @@ that found no safe change to make), `questionnaire_eval.xlsx` (the same 20 quest
 as an actual questionnaire workbook, generated from `questions.json` by
 `make_eval_xlsx.py` — lets the eval set run through the real CLI, and doubles as a
 20-row demo questionnaire instead of the 6-row sample), and `run_eval.py` (the
-reproducible command behind the Eval results section above). The eval questions are
-quoted verbatim from the real CSA CAIQ v4.0.2 instrument under fair use with
+reproducible command behind the results in [`EVAL.md`](EVAL.md)). The eval questions
+are quoted verbatim from the real CSA CAIQ v4.0.2 instrument under fair use with
 attribution — see the licensing section in `LABELING_GUIDE.md` for what is and isn't
 safe to commit from that source.
