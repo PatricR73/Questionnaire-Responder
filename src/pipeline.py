@@ -282,6 +282,11 @@ def _add_stub_banner(ws, last_col: int) -> None:
     help="Retrieved chunks per question (highest-precedence override of the config's top_k).",
 )
 @click.option(
+    "--exact",
+    is_flag=True,
+    help="With --dry-run: use the free count_tokens API for true input-token counts instead of the local tokenizer's 1.4-1.9x undercount band (requires ANTHROPIC_API_KEY; generates nothing).",
+)
+@click.option(
     "--verbose",
     is_flag=True,
     help="Log per-row detail (including tracebacks) to stderr; also always written to the structured <output>.log.jsonl file.",
@@ -301,6 +306,7 @@ def answer(
     dry_run: bool,
     config: Path | None,
     top_k: int | None,
+    exact: bool,
     verbose: bool,
     quiet: bool,
 ):
@@ -350,7 +356,7 @@ def answer(
     log.info("answer run starting: %d row(s), provider=%s, dry_run=%s", len(questions), provider, dry_run)
 
     if dry_run:
-        _dry_run_cost_estimate(questions, all_questions, column_map)
+        _dry_run_cost_estimate(questions, all_questions, column_map, cfg, exact=exact)
         return
 
     if provider == "stub":
@@ -605,12 +611,20 @@ def answer(
             f"{total_cache_creation_tokens} cache-created in"
         )
         if total_entailment_input_tokens or total_entailment_output_tokens:
+            entail_cost = _estimate_cost(
+                total_entailment_input_tokens,
+                total_entailment_output_tokens,
+                cfg.input_price_per_mtok,
+                cfg.output_price_per_mtok,
+            )
             click.echo(
                 f"  entailment check (A1): {total_entailment_input_tokens} in / "
-                f"{total_entailment_output_tokens} out "
-                f"(est. ${_estimate_cost(total_entailment_input_tokens, total_entailment_output_tokens):.4f})"
+                f"{total_entailment_output_tokens} out (est. ${_format_cost(entail_cost)})"
             )
-        click.echo(f"  estimated cost: ${_estimate_cost(total_input_tokens, total_output_tokens):.4f}")
+        total_cost = _estimate_cost(
+            total_input_tokens, total_output_tokens, cfg.input_price_per_mtok, cfg.output_price_per_mtok
+        )
+        click.echo(f"  estimated cost: ${_format_cost(total_cost)}")
 
 
 # Measured output-token average per ANSWERED question from the deterministic
@@ -621,17 +635,24 @@ def answer(
 OUTPUT_TOKENS_PER_ANSWERED_QUESTION = 1132
 
 
-def _dry_run_cost_estimate(questions: list, all_questions: list, column_map) -> None:
+def _dry_run_cost_estimate(questions: list, all_questions: list, column_map, cfg, exact: bool = False) -> None:
     """Everything up to the API call, then stop: column detection and question
     reading already happened; here we run retrieval for every selected row, count
-    input tokens with the real (local) Claude tokenizer — system prompt plus the
-    exact user message generate_answer would build — add an output-token estimate
-    from observed averages, and print an estimated cost. Zero model calls (no API
-    key needed), no workbook written, no run row created in questionnaire_runs.
+    input tokens — system prompt plus the exact user message generate_answer would
+    build — add an output-token estimate from observed averages, and print an
+    estimated cost. No workbook written, no run row created in questionnaire_runs.
 
-    The token counts use src.answer.tokenize, which ships the real Claude BPE
-    locally (see its module docstring for the honest caveat about tokenizer
-    revision vs the live model)."""
+    The estimate must describe the run that would actually happen, so the searcher
+    and store are built IDENTICALLY to the real path from the resolved Config —
+    top_k, embedding model, fusion constants, and the reranker (B4).
+
+    Two counting modes: local (default) uses src.answer.tokenize, which ships the
+    real Claude BPE locally and is documented to undercount the live model by
+    1.4-1.9x — so the cost prints as a RANGE over that band, and the undercount is
+    in the dangerous direction for budgeting. exact uses the count_tokens API for
+    true counts: it IS an API call, but it is free and generates nothing — the
+    dry-run's zero-spend rule is about money, and --exact makes the trade
+    explicit."""
     from src.answer.generate import SYSTEM_PROMPT, _build_user_message
     from src.answer.split_questions import split_question
     from src.answer.tokenize import count_tokens
@@ -640,39 +661,103 @@ def _dry_run_cost_estimate(questions: list, all_questions: list, column_map) -> 
     from src.store.vectorstore import VectorStore
 
     conn = db.connect()
-    vector_store = VectorStore()
-    searcher = HybridSearcher(conn, vector_store)
+    vector_store = VectorStore(model_name=cfg.embedding_model)
+    reranker = None
+    if cfg.reranker:
+        from src.retrieval.reranker import CrossEncoderReranker
+
+        reranker = CrossEncoderReranker()
+    searcher = HybridSearcher(
+        conn,
+        vector_store,
+        vector_weight=cfg.vector_weight,
+        rrf_k=cfg.rrf_k,
+        candidate_pool=cfg.candidate_pool,
+        reranker=reranker,
+    )
 
     system_tokens = count_tokens(SYSTEM_PROMPT)
     total_input = 0
     total_retrieved = 0
-    for q in questions:
-        sub_question = split_question(q.question_text)[0]
-        evidence = searcher.search(sub_question, top_k=5)
-        user_content = _build_user_message(sub_question, evidence, column_map.vocab_values)
-        total_input += system_tokens + count_tokens(user_content)
-        total_retrieved += len(evidence)
+    count_method = (
+        "local Claude tokenizer (claude-v1 BPE; undercounts the live model by ~1.4-1.9x — see src/answer/tokenize.py)"
+    )
+    if exact:
+        # count_tokens is a real API call but free and generates nothing; the
+        # dry-run's zero-spend rule is about money, and --exact makes the trade
+        # explicit (B5).
+        import os
+
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise click.ClickException(
+                "--dry-run --exact needs ANTHROPIC_API_KEY (it calls the free count_tokens API). "
+                "Without a key, use plain --dry-run with the local tokenizer."
+            )
+        import anthropic
+
+        client = anthropic.Anthropic(max_retries=0, timeout=30.0)
+        count_method = "count_tokens API (exact)"
+        for q in questions:
+            sub_question = split_question(q.question_text)[0]
+            evidence = searcher.search(sub_question, top_k=cfg.top_k)
+            user_content = _build_user_message(sub_question, evidence, column_map.vocab_values)
+            resp = client.messages.count_tokens(
+                model=cfg.model,
+                system=[{"type": "text", "text": SYSTEM_PROMPT}],
+                messages=[{"role": "user", "content": user_content}],
+            )
+            total_input += resp.input_tokens
+            total_retrieved += len(evidence)
+    else:
+        for q in questions:
+            sub_question = split_question(q.question_text)[0]
+            evidence = searcher.search(sub_question, top_k=cfg.top_k)
+            user_content = _build_user_message(sub_question, evidence, column_map.vocab_values)
+            total_input += system_tokens + count_tokens(user_content)
+            total_retrieved += len(evidence)
 
     output_estimate = OUTPUT_TOKENS_PER_ANSWERED_QUESTION * len(questions)
-    cost = _estimate_cost(total_input, output_estimate)
 
-    click.echo("Dry run — no API calls, nothing written:")
+    click.echo(
+        "Dry run — " + ("no API calls, " if not exact else "one free count_tokens call per row, ") + "nothing written:"
+    )
     click.echo("  rows detected: " + str(len(all_questions)) + "   rows selected: " + str(len(questions)))
     click.echo(
         "  estimated input tokens: "
         + str(total_input)
         + " (system prompt "
-        + str(system_tokens)
-        + " tokens per row + retrieved chunks + question, counted with the local Claude tokenizer)"
+        + str(system_tokens if not exact else 0)
+        + " tokens per row + retrieved chunks + question, counted with the "
+        + count_method
+        + ")"
     )
     click.echo(
         "  estimated output tokens: "
         + str(output_estimate)
         + " (observed avg "
         + str(OUTPUT_TOKENS_PER_ANSWERED_QUESTION)
-        + " per answered question)"
+        + " per answered question — output is never counted, only input is)"
     )
-    click.echo("  estimated cost: $" + f"{cost:.4f}" + " (placeholder Sonnet-class pricing; see _estimate_cost)")
+    if exact:
+        cost = _estimate_cost(total_input, output_estimate, cfg.input_price_per_mtok, cfg.output_price_per_mtok)
+        click.echo("  estimated cost: $" + _format_cost(cost) + " (exact input count; output still an estimate)")
+    else:
+        # The local tokenizer is documented to undercount the live model by
+        # 1.4-1.9x; budget for the worst case by reporting a RANGE over that band
+        # (B5) instead of a false-precision point estimate.
+        low = _estimate_cost(
+            int(total_input * 1.4), output_estimate, cfg.input_price_per_mtok, cfg.output_price_per_mtok
+        )
+        high = _estimate_cost(
+            int(total_input * 1.9), output_estimate, cfg.input_price_per_mtok, cfg.output_price_per_mtok
+        )
+        click.echo(
+            "  estimated cost: $"
+            + _format_cost(low)
+            + "-$"
+            + _format_cost(high)
+            + " (input-tokenizer undercount band 1.4-1.9x; --exact for a true count)"
+        )
 
 
 def _current_run_config(cfg) -> dict:
@@ -715,18 +800,30 @@ def _config_fingerprint(cfg: dict) -> str:
     )
 
 
-def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
+def _estimate_cost(
+    input_tokens: int,
+    output_tokens: int,
+    input_price_per_mtok: float = 3.0,
+    output_price_per_mtok: float = 15.0,
+) -> float:
     """Rough dollar estimate for the tokens reported this run.
 
-    Placeholder Sonnet-class pricing ($3/M input, $15/M output) — the true numbers
-    depend on the current model's published rate card and any caching discounts,
-    so this is an order-of-magnitude estimate for capacity planning, not a bill.
-    Cache-read input tokens are billed at a fraction of fresh input tokens; the
-    estimate conservatively prices everything at the fresh rate, which
-    overestimates once prompt caching engages."""
-    input_cost = input_tokens / 1_000_000 * 3.0
-    output_cost = output_tokens / 1_000_000 * 15.0
+    Prices come from the Config rate card (B5) so a price change is a config
+    change, not a code edit; the defaults mirror the old source constants. The
+    true numbers depend on the current model's published rate card and any
+    caching discounts, so this is an order-of-magnitude estimate for capacity
+    planning, not a bill. Cache-read input tokens are billed at a fraction of
+    fresh input tokens; the estimate conservatively prices everything at the
+    fresh rate, which overestimates once prompt caching engages."""
+    input_cost = input_tokens / 1_000_000 * input_price_per_mtok
+    output_cost = output_tokens / 1_000_000 * output_price_per_mtok
     return input_cost + output_cost
+
+
+def _format_cost(x: float) -> str:
+    """Two significant figures — a cost estimate with four decimals reads as a
+    precision the number does not have (B5)."""
+    return f"{x:.2g}"
 
 
 if __name__ == "__main__":

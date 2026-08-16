@@ -29,6 +29,10 @@ from pathlib import Path
 import httpx
 from tokenizers import Tokenizer
 
+# Third-party mirror (Xenova/claude-tokenizer on the HuggingFace hub) of the
+# claude-v1-tokenization.json file the official anthropic-sdk-python shipped —
+# NOT an Anthropic endpoint. The file is fetched once and cached under the temp
+# dir; set QRESP_TOKENIZER_JSON to a local copy to go fully offline.
 _TOKENIZER_REMOTE_URL = "https://huggingface.co/Xenova/claude-tokenizer/resolve/main/tokenizer.json"
 _tokenizer: Tokenizer | None = None
 
@@ -46,10 +50,20 @@ def _load_tokenizer() -> Tokenizer:
     if _tokenizer is None:
         path = tokenizer_cache_path()
         if not path.exists():
-            path.parent.mkdir(parents=True, exist_ok=True)
-            response = httpx.get(_TOKENIZER_REMOTE_URL, timeout=60)
-            response.raise_for_status()
-            path.write_text(response.text, encoding="utf-8")
+            try:
+                path.parent.mkdir(parents=True, exist_ok=True)
+                response = httpx.get(_TOKENIZER_REMOTE_URL, timeout=60)
+                response.raise_for_status()
+                path.write_text(response.text, encoding="utf-8")
+            except httpx.HTTPError as exc:
+                # B5: a silent download failure surfaces as an ImportError-adjacent
+                # mystery; name the offline escape hatch explicitly.
+                raise RuntimeError(
+                    "Could not download the Claude tokenizer JSON needed for local token "
+                    "counting. Set QRESP_TOKENIZER_JSON to a local copy of the file (a "
+                    "claude-v1-tokenization.json), or use --dry-run --exact for "
+                    "API-side counts instead."
+                ) from exc
         _tokenizer = Tokenizer.from_file(str(path))
     return _tokenizer
 

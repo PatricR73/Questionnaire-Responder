@@ -42,6 +42,8 @@ _FIELD_NAMES = {
     "reranker",
     "entailment_check",
     "entailment_model",
+    "input_price_per_mtok",
+    "output_price_per_mtok",
 }
 
 _INT_FIELDS = {
@@ -53,7 +55,7 @@ _INT_FIELDS = {
     "min_chunk_chars",
     "overlap_sentences",
 }
-_FLOAT_FIELDS = {"weak_match_distance", "vector_weight"}
+_FLOAT_FIELDS = {"weak_match_distance", "vector_weight", "input_price_per_mtok", "output_price_per_mtok"}
 _BOOL_FIELDS = {"reranker", "entailment_check"}
 
 _ENV_VAR = "QRESP_CONFIG"  # env var pointing at a TOML file
@@ -85,6 +87,11 @@ class Config:
     # answered row.
     entailment_check: bool = False
     entailment_model: str = "claude-sonnet-5"
+    # Rate card for the estimated-cost lines (B5): dollars per million tokens.
+    # Moved out of _estimate_cost's source so a price change is a config change,
+    # and serialized into run_config so an old run's cost stays interpretable.
+    input_price_per_mtok: float = 3.0
+    output_price_per_mtok: float = 15.0
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
