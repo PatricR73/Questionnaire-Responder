@@ -18,6 +18,21 @@ REQUEST_TIMEOUT_SECONDS = 30.0
 MAX_RETRIES = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
 
+# Eval reproducibility, not a stylistic choice: the Anthropic SDK's default sampling
+# temperature is 1.0, so before this constant existed every run was a fresh stochastic
+# sample and a one-question delta between two runs was indistinguishable from noise —
+# exactly how the 12/20 -> 13/20 RRF-reweighting claim in TUNING_LOG.md was originally
+# produced (n=20, single sample). 0 asks the API for the most-likely (greedy) output:
+# a deliberate choice for a task where we want the most-likely grounded answer rather
+# than varied phrasing. Caveat, verified live against this API: claude-sonnet-5
+# deprecates the temperature parameter outright — the server rejects any value with a
+# 400 ("temperature is deprecated for this model") — so _create_with_temperature
+# probes once per process and omits the parameter for models that reject it (their
+# fixed default sampling is already the deterministic, most-likely behaviour), while
+# keeping temperature=0 for models that still accept it. Revisit if MODEL changes.
+TEMPERATURE = 0
+_TEMPERATURE_DEPRECATED: bool = False
+
 SYSTEM_PROMPT = """You are drafting one answer to a vendor security questionnaire on behalf of an \
 organization. You may use ONLY the evidence text provided to you below in this prompt. You have no \
 other source of truth: not general security knowledge, not what a "typical" or "standard" company \
@@ -185,17 +200,38 @@ def generate_answer(
     client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT_SECONDS)
     retryable = (anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APITimeoutError, anthropic.APIConnectionError)
 
+    def create_message(user_content: str):
+        """client.messages.create with the reproducibility temperature applied.
+
+        See TEMPERATURE's docstring: some models reject the parameter outright. Probe
+        once per process (module-level flag, so a 400-row run pays at most one extra
+        rejected call) and omit it for models that deprecate it."""
+        global _TEMPERATURE_DEPRECATED
+        kwargs = {
+            "model": MODEL,
+            "max_tokens": 1024,
+            "temperature": TEMPERATURE,
+            "system": SYSTEM_PROMPT,
+            "output_config": {"format": {"type": "json_schema", "schema": _ANSWER_SCHEMA}},
+            "messages": [{"role": "user", "content": user_content}],
+        }
+        if _TEMPERATURE_DEPRECATED:
+            kwargs.pop("temperature")
+            return client.messages.create(**kwargs)
+        try:
+            return client.messages.create(**kwargs)
+        except anthropic.BadRequestError as exc:
+            if "temperature" in str(exc) and "deprecated" in str(exc):
+                _TEMPERATURE_DEPRECATED = True
+                kwargs.pop("temperature")
+                return client.messages.create(**kwargs)
+            raise
+
     def call(user_content: str):
         attempt = 0
         while True:
             try:
-                return client.messages.create(
-                    model=MODEL,
-                    max_tokens=1024,
-                    system=SYSTEM_PROMPT,
-                    output_config={"format": {"type": "json_schema", "schema": _ANSWER_SCHEMA}},
-                    messages=[{"role": "user", "content": user_content}],
-                )
+                return create_message(user_content)
             except retryable:
                 if attempt >= MAX_RETRIES:
                     raise
