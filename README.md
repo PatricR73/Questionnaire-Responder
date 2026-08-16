@@ -10,7 +10,10 @@ subscription. Measured 65% of a 20-question CAIQ set usable as-is; every other r
 either flagged for review or an honest "not found," never a confident wrong answer.
 See Results below for the real numbers.
 
-![Demo](docs/demo.gif)
+<video controls width="700" poster="docs/demo.webm">
+  <source src="docs/demo.webm" type="video/webm">
+  (Your browser does not support HTML5 video — open <a href="docs/demo.webm">docs/demo.webm</a>.)
+</video>
 
 # Vendor Security Questionnaire Responder
 
