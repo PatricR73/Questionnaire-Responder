@@ -106,8 +106,9 @@ def _add_stub_banner(ws, last_col: int) -> None:
 @click.option("--only-row", type=int, default=None, help="Process only this single sheet row (overrides --limit); useful for targeted checks.")
 @click.option("--provider", type=click.Choice(["anthropic", "stub"]), default="anthropic", show_default=True)
 @click.option("--stub-fail-row", type=int, default=None, help="With --provider stub, make that row raise, to exercise per-row error isolation.")
-def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, provider: str, stub_fail_row: int | None):
-    if provider == "anthropic":
+@click.option("--dry-run", is_flag=True, help="Estimate what a run will cost before starting it: column detection, question reading, and retrieval for every selected row, then real (local) token counts and an estimated price. Makes zero API calls, writes no workbook, and creates no run row.")
+def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, provider: str, stub_fail_row: int | None, dry_run: bool):
+    if provider == "anthropic" and not dry_run:
         if not os.environ.get("ANTHROPIC_API_KEY"):
             raise click.ClickException("ANTHROPIC_API_KEY not set — export it before running with --provider anthropic (every row would fail identically). Use --provider stub if you want to test without a key.")
         answerer = AnthropicAnswerer()
@@ -126,6 +127,10 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     else:
         questions = all_questions if limit == 0 else all_questions[:limit]
     click.echo(f"Answering {len(questions)} row(s) with provider={provider}.")
+
+    if dry_run:
+        _dry_run_cost_estimate(questions, all_questions, column_map)
+        return
 
     if provider == "stub":
         _add_stub_banner(ws, last_col=max(column_map.question_col, column_map.answer_col, column_map.vocab_col or 0))
@@ -265,6 +270,58 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
             f"{total_cache_creation_tokens} cache-created in"
         )
         click.echo(f"  estimated cost: ${_estimate_cost(total_input_tokens, total_output_tokens):.4f}")
+
+
+# Measured output-token average per ANSWERED question from the deterministic
+# 20-question baseline eval runs (55755 input / 7927 output over 7 answered rows;
+# 1132 out per answered row). Used by --dry-run to estimate output spend; the
+# answered-only average overestimates for a run with many NOT_FOUND rows, which is
+# the conservative direction for cost planning.
+OUTPUT_TOKENS_PER_ANSWERED_QUESTION = 1132
+
+
+def _dry_run_cost_estimate(questions: list, all_questions: list, column_map) -> None:
+    """Everything up to the API call, then stop: column detection and question
+    reading already happened; here we run retrieval for every selected row, count
+    input tokens with the real (local) Claude tokenizer — system prompt plus the
+    exact user message generate_answer would build — add an output-token estimate
+    from observed averages, and print an estimated cost. Zero model calls (no API
+    key needed), no workbook written, no run row created in questionnaire_runs.
+
+    The token counts use src.answer.tokenize, which ships the real Claude BPE
+    locally (see its module docstring for the honest caveat about tokenizer
+    revision vs the live model)."""
+    from src.answer.generate import SYSTEM_PROMPT, _build_user_message
+    from src.answer.split_questions import split_question
+    from src.answer.tokenize import count_tokens
+    from src.retrieval.hybrid_search import HybridSearcher
+    from src.store import db
+    from src.store.vectorstore import VectorStore
+
+    conn = db.connect()
+    vector_store = VectorStore()
+    searcher = HybridSearcher(conn, vector_store)
+
+    system_tokens = count_tokens(SYSTEM_PROMPT)
+    total_input = 0
+    total_retrieved = 0
+    for q in questions:
+        sub_question = split_question(q.question_text)[0]
+        evidence = searcher.search(sub_question, top_k=5)
+        user_content = _build_user_message(sub_question, evidence, column_map.vocab_values)
+        total_input += system_tokens + count_tokens(user_content)
+        total_retrieved += len(evidence)
+
+    output_estimate = OUTPUT_TOKENS_PER_ANSWERED_QUESTION * len(questions)
+    cost = _estimate_cost(total_input, output_estimate)
+
+    click.echo("Dry run — no API calls, nothing written:")
+    click.echo("  rows detected: " + str(len(all_questions)) + "   rows selected: " + str(len(questions)))
+    click.echo("  estimated input tokens: " + str(total_input) + " (system prompt " + str(system_tokens) +
+               " tokens per row + retrieved chunks + question, counted with the local Claude tokenizer)")
+    click.echo("  estimated output tokens: " + str(output_estimate) +
+               " (observed avg " + str(OUTPUT_TOKENS_PER_ANSWERED_QUESTION) + " per answered question)")
+    click.echo("  estimated cost: $" + f"{cost:.4f}" + " (placeholder Sonnet-class pricing; see _estimate_cost)")
 
 
 def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
