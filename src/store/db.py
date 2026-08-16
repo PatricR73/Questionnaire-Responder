@@ -82,6 +82,11 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
         # for a project whose central claim is that every change is measured against
         # a known baseline.
         "ALTER TABLE questionnaire_runs ADD COLUMN run_config TEXT",
+        # The model's verbatim cited sentences (JSON list). The review UI discards
+        # the most useful evidence it has without these — the specific sentences the
+        # model says support the answer — so they are persisted and highlighted in
+        # the displayed chunk text.
+        "ALTER TABLE answers ADD COLUMN cited_sentences TEXT",
     ):
         try:
             conn.execute(statement)
@@ -117,11 +122,12 @@ def record_answer(
     final_confidence: str,
     cited_chunk_ids: list[str],
     polarity: str | None = None,
+    cited_sentences: list[str] | None = None,
 ) -> None:
     conn.execute(
         "INSERT INTO answers (run_id, row_index, question_text, sub_question_text, drafted_answer, "
-        "vocab_selection, self_confidence, final_confidence, polarity, cited_chunk_ids) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "vocab_selection, self_confidence, final_confidence, polarity, cited_chunk_ids, cited_sentences) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             run_id,
             row_index,
@@ -133,6 +139,7 @@ def record_answer(
             final_confidence,
             polarity,
             json.dumps(cited_chunk_ids),
+            json.dumps(cited_sentences or []),
         ),
     )
     conn.commit()

@@ -80,6 +80,44 @@ def test_review_ui_finds_a_seeded_run_from_a_foreign_cwd(tmp_path, monkeypatch):
     assert at.sidebar.selectbox[0].options == ["source.xlsx  —  " + _created_at_label(data_dir)]
 
 
+def test_review_ui_shows_polarity_downgrade_and_cited_sentences(tmp_path, monkeypatch):
+    """P28: the review screen must show what the model actually claimed — polarity
+    as a labeled badge, self_confidence next to final_confidence when the
+    cross-check downgraded the model, and the cited sentences highlighted within
+    the chunk text."""
+    from streamlit.testing.v1 import AppTest
+
+    from src.review_ui import _highlight_cited
+    from src.store import db
+
+    data_dir = tmp_path / "data"
+    conn = db.connect(data_dir / "store.db")
+    run_id = db.start_questionnaire_run(conn, "source.xlsx", "out.xlsx")
+    conn.execute(
+        "INSERT INTO chunks (source_filename, heading_path, loc_ref, text, embedding_id) "
+        "VALUES ('policy.md', 'Encryption', 'line 3', ?, 'doc.md::0')",
+        ("All traffic is encrypted in transit using TLS 1.2. Keys rotate quarterly.",),
+    )
+    conn.commit()
+    db.record_answer(
+        conn, run_id, 2, "Question one?", "Question one?",
+        "Drafted answer text", None, "high", "low",
+        ["doc.md::0"], polarity="partial", cited_sentences=["All traffic is encrypted in transit using TLS 1.2."],
+    )
+    conn.close()
+
+    monkeypatch.setenv("QRESP_DATA_DIR", str(data_dir))
+    monkeypatch.chdir(tmp_path)
+    at = AppTest.from_file(str(SCRIPT)).run()
+
+    assert not at.exception
+    rendered = "\n".join(str(m.value) for m in at.markdown)
+    assert "PARTIAL" in rendered  # polarity badge is shown
+    assert "model said: high" in rendered  # downgrade (high -> low) is visible
+    assert "**All traffic is encrypted in transit using TLS 1.2.**" in rendered  # cited sentence highlighted
+    assert _highlight_cited("X. Cited sentence Y. Z.", ["Cited sentence Y."]) == "X. **Cited sentence Y.** Z."
+
+
 def _created_at_label(data_dir: Path) -> str:
     """Re-read the seeded run's created_at to build the exact selectbox label the
     review UI produces (f"{source_path}  —  {created_at}")."""

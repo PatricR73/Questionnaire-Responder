@@ -31,7 +31,7 @@ whether the answer step needs batching/caching before a 200-400 question run.
 """
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from src.answer import generate as generate_module
 from src.answer.confidence import WEAK_MATCH_DISTANCE, GroundedConfidence, cross_check_confidence
@@ -60,6 +60,7 @@ class AnswerResult:
     provider: str
     vocab_selection: str | None = None
     polarity: str | None = None  # AnswerPolarity.AFFIRMS | DENIES | PARTIAL when ANSWERED, else None
+    cited_sentences: list[str] = field(default_factory=list)
     input_tokens: int = 0
     output_tokens: int = 0
     # Cache accounting carried from the API usage so the run summary can break out
@@ -147,6 +148,7 @@ class AnthropicAnswerer(Answerer):
                 cited_chunk_ids=[],
                 provider=self.provider_name,
                 vocab_selection=None,
+                cited_sentences=[],
                 input_tokens=draft.input_tokens,
                 output_tokens=draft.output_tokens,
                 cache_read_input_tokens=draft.cache_read_input_tokens,
@@ -163,6 +165,7 @@ class AnthropicAnswerer(Answerer):
             provider=self.provider_name,
             vocab_selection=vocab_selection,
             polarity=draft.polarity,
+            cited_sentences=draft.cited_sentences,
             input_tokens=draft.input_tokens,
             output_tokens=draft.output_tokens,
             cache_read_input_tokens=draft.cache_read_input_tokens,

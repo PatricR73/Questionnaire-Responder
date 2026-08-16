@@ -36,6 +36,15 @@ BADGES = {
     "error": ("🔴", "ERROR"),
 }
 
+# Polarity badge (P28): the model's affirmed/denied/partial verdict on a row was
+# stored but never displayed — the reviewer saw the answer without the claim it
+# makes, which is exactly what polarity exists to surface.
+POLARITY_BADGES = {
+    "affirms": ("✅", "AFFIRMS"),
+    "denies": ("🚫", "DENIES"),
+    "partial": ("🧩", "PARTIAL"),
+}
+
 # 50 rows per page (P27): a 400-row run used to re-render the entire page on every
 # button click; the filter is applied before pagination so the page counts and the
 # filtered totals stay meaningful.
@@ -69,11 +78,34 @@ def load_chunks(conn, embedding_ids: list[str]) -> dict:
     return {r["embedding_id"]: r for r in rows}
 
 
+def _highlight_cited(text: str, cited_sentences: list[str]) -> str:
+    """Bold every cited sentence that appears in a chunk's text, for markdown
+    display — the reviewer's eye goes straight to the supporting line instead of
+    reading a full passage."""
+    display = text
+    for sentence in sorted(cited_sentences, key=len, reverse=True):
+        if sentence in display:
+            display = display.replace(sentence, f"**{sentence}**")
+    return display
+
+
 def render_row(conn, run_id, row, chunks_by_id: dict):
     emoji, label = BADGES.get(row["final_confidence"], ("❔", row["final_confidence"] or "UNKNOWN"))
     reviewed = bool(row["human_action"])
+    cited_sentences = json.loads(row["cited_sentences"]) if row["cited_sentences"] else []
 
-    header = f"{emoji} **{label}** — Row {row['row_index']}"
+    # self_confidence sits next to final_confidence so the reviewer can see when
+    # the cross-check downgraded the model (model said "high", final is "low").
+    confidence_line = f"{emoji} **{label}**"
+    if row["self_confidence"] and row["self_confidence"] != row["final_confidence"]:
+        confidence_line += f"  (model said: {row['self_confidence']})"
+    polarity_emoji, polarity_label = POLARITY_BADGES.get(
+        row["polarity"], ("", "")
+    )
+    if polarity_label:
+        confidence_line += f"  ·  {polarity_emoji} **{polarity_label}**"
+
+    header = f"{confidence_line} — Row {row['row_index']}"
     if reviewed:
         header += f"  ·  ✓ {row['human_action']} ({row['timestamp']})"
     st.markdown(header)
@@ -96,7 +128,7 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
             if chunk is None:
                 continue
             st.caption(f"{chunk['source_filename']} — {chunk['heading_path'] or '(no heading)'}")
-            st.text(chunk["text"])
+            st.markdown(_highlight_cited(chunk["text"], cited_sentences))
 
     row_index = row["row_index"]
     approve_col, edit_col, reject_col = st.columns(3)
@@ -206,7 +238,8 @@ def main():
     rows = conn.execute(
         """
         SELECT a.row_index, a.question_text, a.drafted_answer, a.reviewed_answer,
-               a.vocab_selection, a.final_confidence, a.cited_chunk_ids,
+               a.vocab_selection, a.final_confidence, a.self_confidence, a.polarity,
+               a.cited_chunk_ids, a.cited_sentences,
                l.human_action, l.timestamp
         FROM answers a
         LEFT JOIN audit_log l ON l.run_id = a.run_id AND l.row_index = a.row_index

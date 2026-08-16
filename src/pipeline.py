@@ -312,6 +312,7 @@ def answer(
                     self_confidence = result.confidence
                     polarity = result.polarity
                     cited_chunk_ids = result.cited_chunk_ids
+                    cited_sentences = result.cited_sentences
                     sources = [f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence]
                     error_message = None
                     total_input_tokens += result.input_tokens
@@ -351,6 +352,7 @@ def answer(
                         ) from exc
                     final_confidence = "error"
                     cited_chunk_ids = []
+                    cited_sentences = []
                     sources = []
                     answer_text = None
                     vocab_selection = None
@@ -415,6 +417,7 @@ def answer(
                     final_confidence,
                     cited_chunk_ids,
                     polarity=polarity,
+                    cited_sentences=cited_sentences,
                 )
                 db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
 
