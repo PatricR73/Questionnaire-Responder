@@ -12,3 +12,4 @@ out/
 fixtures/eval/*_source_pool.*
 fixtures/eval/caiq_full*
 fixtures/eval/*_full_pool.*
+*.log.jsonl

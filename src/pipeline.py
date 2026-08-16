@@ -213,18 +213,20 @@ def answer(
 ):
     from src.config import load_config
 
-    _setup_logging(output, verbose=verbose, quiet=quiet)
     if verbose and quiet:
         raise click.ClickException("--verbose and --quiet are mutually exclusive.")
 
     # Guard against clobbering the customer's source workbook: --output resolving
     # to the same file as --questionnaire (directly or via a symlink — resolve()
-    # follows symlinks) would overwrite it in place, unrecoverably.
+    # follows symlinks) would overwrite it in place, unrecoverably. Runs BEFORE
+    # _setup_logging, which would otherwise create the log file next to the
+    # rejected path.
     if questionnaire.resolve() == output.resolve():
         raise click.ClickException(
             f"--output {output} is the same file as --questionnaire {questionnaire} — "
             f"refusing to overwrite the source workbook in place. Choose a different --output."
         )
+    _setup_logging(output, verbose=verbose, quiet=quiet)
 
     cli_overrides = {}
     if top_k is not None:
