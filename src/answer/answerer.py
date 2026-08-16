@@ -68,6 +68,10 @@ class AnswerResult:
     # leaves them at 0 — the numbers come from the API.
     cache_read_input_tokens: int = 0
     cache_creation_input_tokens: int = 0
+    # A1: tokens spent on the optional entailment (support) check, kept separate
+    # from generation tokens so the run summary can show the guarantee's cost.
+    entailment_input_tokens: int = 0
+    entailment_output_tokens: int = 0
 
 
 class Answerer(ABC):
@@ -96,6 +100,8 @@ class AnthropicAnswerer(Answerer):
         self._model = getattr(config, "model", None)
         self._max_tokens = getattr(config, "max_tokens", None)
         self._weak_match_distance = getattr(config, "weak_match_distance", None)
+        self._entailment_check = getattr(config, "entailment_check", False)
+        self._entailment_model = getattr(config, "entailment_model", None)
 
     def answer_question(
         self,
@@ -123,6 +129,25 @@ class AnthropicAnswerer(Answerer):
         # Not-found rows carry [] for the same reason StubAnswerer's do: nothing was
         # cited.
         cited_chunk_ids = sorted(final_confidence.cited_ids)
+
+        # A1: third confidence layer — entailment, behind a flag (default OFF so the
+        # published baseline stays reproducible). Runs only when the answer is
+        # already grounded and non-empty; it can only downgrade. Its tokens are
+        # carried separately so the run summary shows the price of the guarantee.
+        entailment_input_tokens = 0
+        entailment_output_tokens = 0
+        if self._entailment_check and final_confidence != "none" and draft.answer.strip() and draft.cited_sentences:
+            from src.answer.entailment import check_answer_entailment
+
+            result = check_answer_entailment(
+                draft.answer,
+                draft.cited_sentences,
+                model=self._entailment_model or "claude-sonnet-5",
+            )
+            entailment_input_tokens = result.input_tokens
+            entailment_output_tokens = result.output_tokens
+            if not result.supported:
+                final_confidence = GroundedConfidence("none", cited_ids=frozenset(cited_chunk_ids))
 
         # Vocabulary membership is enforced twice, the same way citations are: the
         # per-request schema enum (generate.build_answer_schema) constrains decoding
@@ -153,6 +178,8 @@ class AnthropicAnswerer(Answerer):
                 output_tokens=draft.output_tokens,
                 cache_read_input_tokens=draft.cache_read_input_tokens,
                 cache_creation_input_tokens=draft.cache_creation_input_tokens,
+                entailment_input_tokens=entailment_input_tokens,
+                entailment_output_tokens=entailment_output_tokens,
             )
 
         return AnswerResult(
@@ -170,6 +197,8 @@ class AnthropicAnswerer(Answerer):
             output_tokens=draft.output_tokens,
             cache_read_input_tokens=draft.cache_read_input_tokens,
             cache_creation_input_tokens=draft.cache_creation_input_tokens,
+            entailment_input_tokens=entailment_input_tokens,
+            entailment_output_tokens=entailment_output_tokens,
         )
 
 

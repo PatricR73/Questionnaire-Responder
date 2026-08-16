@@ -293,6 +293,8 @@ def answer(
     total_output_tokens = 0
     total_cache_read_tokens = 0
     total_cache_creation_tokens = 0
+    total_entailment_input_tokens = 0
+    total_entailment_output_tokens = 0
     consecutive_errors = 0
     caught_exc = (
         None  # set on the error path so the structured log can carry the traceback after the except block exits
@@ -335,6 +337,8 @@ def answer(
                         total_output_tokens += result.output_tokens
                         total_cache_read_tokens += result.cache_read_input_tokens
                         total_cache_creation_tokens += result.cache_creation_input_tokens
+                        total_entailment_input_tokens += result.entailment_input_tokens
+                        total_entailment_output_tokens += result.entailment_output_tokens
                     except FATAL_ERRORS as exc:
                         # Wrong key, wrong model, or a schema-rejecting request: the same
                         # failure for every remaining row. Abort now (finally saves
@@ -404,6 +408,8 @@ def answer(
                         ],
                         "input_tokens": in_tokens,
                         "output_tokens": out_tokens,
+                        "entailment_input_tokens": (result.entailment_input_tokens if error_message is None else 0),
+                        "entailment_output_tokens": (result.entailment_output_tokens if error_message is None else 0),
                         "error": error_message,
                     }
                     if error_message is None:
@@ -493,6 +499,12 @@ def answer(
             f"  of which {uncached_input} uncached in, {total_cache_read_tokens} cache-read in, "
             f"{total_cache_creation_tokens} cache-created in"
         )
+        if total_entailment_input_tokens or total_entailment_output_tokens:
+            click.echo(
+                f"  entailment check (A1): {total_entailment_input_tokens} in / "
+                f"{total_entailment_output_tokens} out "
+                f"(est. ${_estimate_cost(total_entailment_input_tokens, total_entailment_output_tokens):.4f})"
+            )
         click.echo(f"  estimated cost: ${_estimate_cost(total_input_tokens, total_output_tokens):.4f}")
 
 

@@ -40,6 +40,8 @@ _FIELD_NAMES = {
     "overlap_sentences",
     "embedding_model",
     "reranker",
+    "entailment_check",
+    "entailment_model",
 }
 
 _INT_FIELDS = {
@@ -52,7 +54,7 @@ _INT_FIELDS = {
     "overlap_sentences",
 }
 _FLOAT_FIELDS = {"weak_match_distance", "vector_weight"}
-_BOOL_FIELDS = {"reranker"}
+_BOOL_FIELDS = {"reranker", "entailment_check"}
 
 _ENV_VAR = "QRESP_CONFIG"  # env var pointing at a TOML file
 
@@ -76,6 +78,13 @@ class Config:
     # P11: local cross-encoder reranker over the fused candidate pool, default OFF
     # so the existing baseline stays reproducible. See src/retrieval/reranker.py.
     reranker: bool = False
+    # A1: third confidence layer — does the answer FOLLOW from the cited sentences
+    # (not just cite them verbatim)? Default OFF so the 14/24 baseline stays
+    # reproducible. See src/answer/entailment.py. entailment_model should be the
+    # cheapest capable model on the account; the check costs one small call per
+    # answered row.
+    entailment_check: bool = False
+    entailment_model: str = "claude-sonnet-5"
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
