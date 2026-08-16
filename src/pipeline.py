@@ -138,7 +138,9 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     conn = db.connect()
     vector_store = VectorStore()
     searcher = HybridSearcher(conn, vector_store)
-    run_id = db.start_questionnaire_run(conn, str(questionnaire), str(output))
+    run_config = _current_run_config(top_k=5)
+    click.echo(f"Config: {_config_fingerprint(run_config)}")
+    run_id = db.start_questionnaire_run(conn, str(questionnaire), str(output), run_config=run_config)
 
     output.parent.mkdir(parents=True, exist_ok=True)
     jsonl_path = output.with_suffix(".jsonl")
@@ -322,6 +324,63 @@ def _dry_run_cost_estimate(questions: list, all_questions: list, column_map) -> 
     click.echo("  estimated output tokens: " + str(output_estimate) +
                " (observed avg " + str(OUTPUT_TOKENS_PER_ANSWERED_QUESTION) + " per answered question)")
     click.echo("  estimated cost: $" + f"{cost:.4f}" + " (placeholder Sonnet-class pricing; see _estimate_cost)")
+
+
+def _current_run_config(top_k: int = 5) -> dict:
+    """Snapshot of the configuration that produced this run, for the run_config
+    column and the start-of-run fingerprint.
+
+    Every value that affects answers: model, token limit, the confidence threshold,
+    the fusion constants, the retrieval pool sizes, the chunking bounds, the
+    embedding model — plus the git revision and a dirty-tree flag, so a past run in
+    out/store.db can always be tied back to the exact code+config that produced it."""
+    import subprocess
+
+    from src.answer import generate
+    from src.answer.confidence import WEAK_MATCH_DISTANCE
+    from src.ingest import chunk
+    from src.retrieval import hybrid_search
+    from src.store.vectorstore import DEFAULT_MODEL
+
+    repo_root = Path(__file__).resolve().parent.parent
+    git_sha = None
+    git_dirty = None
+    try:
+        git_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=repo_root, stderr=subprocess.DEVNULL, text=True
+        ).strip()
+        git_dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=repo_root, text=True).strip())
+    except Exception:  # noqa: BLE001 — not in a git repo or git unavailable: record the gap, don't crash
+        pass
+
+    return {
+        "model": generate.MODEL,
+        "max_tokens": generate.MAX_TOKENS,
+        "weak_match_distance": WEAK_MATCH_DISTANCE,
+        "vector_weight": hybrid_search.VECTOR_WEIGHT,
+        "rrf_k": hybrid_search.RRF_K,
+        "candidate_pool": hybrid_search.CANDIDATE_POOL,
+        "top_k": top_k,
+        "max_chunk_chars": chunk.MAX_CHUNK_CHARS,
+        "min_chunk_chars": chunk.MIN_CHUNK_CHARS,
+        "overlap_sentences": chunk.OVERLAP_SENTENCES,
+        "embedding_model": DEFAULT_MODEL,
+        "git_sha": git_sha,
+        "git_dirty": git_dirty,
+    }
+
+
+def _config_fingerprint(cfg: dict) -> str:
+    """One-line fingerprint printed at the start of every answer run, so the
+    terminal shows the config before any money is spent on it."""
+    git = (cfg.get("git_sha") or "no-git") + ("(dirty)" if cfg.get("git_dirty") else "")
+    return (
+        f"model={cfg['model']} max_tokens={cfg['max_tokens']} "
+        f"weak_match={cfg['weak_match_distance']} vector_weight={cfg['vector_weight']} "
+        f"rrf_k={cfg['rrf_k']} pool={cfg['candidate_pool']} top_k={cfg['top_k']} "
+        f"chunks={cfg['max_chunk_chars']}/{cfg['min_chunk_chars']}/{cfg['overlap_sentences']} "
+        f"embed={cfg['embedding_model']} git={git}"
+    )
 
 
 def _estimate_cost(input_tokens: int, output_tokens: int) -> float:

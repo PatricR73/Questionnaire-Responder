@@ -152,7 +152,7 @@ def main():
     conn = get_conn()
 
     runs = conn.execute(
-        "SELECT id, source_path, output_path, created_at FROM questionnaire_runs ORDER BY created_at DESC"
+        "SELECT id, source_path, output_path, created_at, run_config FROM questionnaire_runs ORDER BY created_at DESC"
     ).fetchall()
     if not runs:
         st.info("No questionnaire runs found. Run `python -m src.pipeline answer ...` first.")
@@ -162,6 +162,20 @@ def main():
     selected = st.sidebar.selectbox("Run", list(run_options.keys()))
     run_id = run_options[selected]
     run_row = next(r for r in runs if r["id"] == run_id)
+
+    # The configuration that produced this run (recorded since P17) — model,
+    # thresholds, fusion constants, chunk bounds, git revision — so a reviewer can
+    # see what a given run was measured against before trusting its answers.
+    with st.sidebar.expander("Run configuration"):
+        try:
+            cfg = json.loads(run_row["run_config"]) if run_row["run_config"] else {}
+        except (TypeError, ValueError):
+            cfg = {}
+        if cfg:
+            for key, value in cfg.items():
+                st.write(f"**{key}:** {value}")
+        else:
+            st.write("*(not recorded — pre-P17 run)*")
 
     rows = conn.execute(
         """

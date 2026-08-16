@@ -75,6 +75,13 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
         # unreproducible. Also gives a free model-vs-human diff for a future
         # feedback-loop slice.
         "ALTER TABLE answers ADD COLUMN reviewed_answer TEXT",
+        # JSON snapshot of the configuration that produced this run (model,
+        # thresholds, fusion constants, chunk bounds, embedding model, git revision)
+        # — see pipeline._current_run_config. Nothing ties a past run's artifacts to
+        # its config otherwise, which makes old runs in out/store.db uninterpretable
+        # for a project whose central claim is that every change is measured against
+        # a known baseline.
+        "ALTER TABLE questionnaire_runs ADD COLUMN run_config TEXT",
     ):
         try:
             conn.execute(statement)
@@ -84,10 +91,15 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
     return conn
 
 
-def start_questionnaire_run(conn: sqlite3.Connection, source_path: str, output_path: str) -> int:
+def start_questionnaire_run(
+    conn: sqlite3.Connection,
+    source_path: str,
+    output_path: str,
+    run_config: dict | None = None,
+) -> int:
     cursor = conn.execute(
-        "INSERT INTO questionnaire_runs (source_path, output_path, created_at) VALUES (?, ?, ?)",
-        (source_path, output_path, datetime.now(timezone.utc).isoformat()),
+        "INSERT INTO questionnaire_runs (source_path, output_path, created_at, run_config) VALUES (?, ?, ?, ?)",
+        (source_path, output_path, datetime.now(timezone.utc).isoformat(), json.dumps(run_config or {})),
     )
     conn.commit()
     return cursor.lastrowid
