@@ -293,159 +293,164 @@ def answer(
         with open(jsonl_path, "a") as jsonl_file:
             for i, q in enumerate(questions, start=1):
                 start = time.monotonic()
-                try:
-                    sub_question = split_question(q.question_text)[0]
-                    evidence = searcher.search(sub_question, top_k=cfg.top_k)
-                    result = answerer.answer_question(
-                        sub_question, evidence, column_map.vocab_values, row_index=q.row_index
-                    )
+                # split_question is a documented pass-through today (one element), but taking
+                # [0] silently discarded every sub-question after the first - a live bug the
+                # moment a real splitter lands (v2 priority #2). Loop over the sub-questions
+                # so each one gets a full retrieve/generate/record cycle; with the
+                # pass-through this is exactly one iteration, bit-identical to before.
+                for sub_question in split_question(q.question_text):
+                    try:
+                        evidence = searcher.search(sub_question, top_k=cfg.top_k)
+                        result = answerer.answer_question(
+                            sub_question, evidence, column_map.vocab_values, row_index=q.row_index
+                        )
 
-                    if result.status == AnswerStatus.NOT_FOUND:
-                        final_confidence = "none"
-                    elif result.status == AnswerStatus.ANSWERED:
-                        final_confidence = result.confidence  # "high" or "low"
-                    else:
-                        final_confidence = "error"  # Answerers never return ERROR themselves; kept for completeness
+                        if result.status == AnswerStatus.NOT_FOUND:
+                            final_confidence = "none"
+                        elif result.status == AnswerStatus.ANSWERED:
+                            final_confidence = result.confidence  # "high" or "low"
+                        else:
+                            final_confidence = "error"  # Answerers never return ERROR themselves; kept for completeness
 
-                    answer_text = result.answer
-                    vocab_selection = result.vocab_selection
-                    self_confidence = result.confidence
-                    polarity = result.polarity
-                    cited_chunk_ids = result.cited_chunk_ids
-                    cited_sentences = result.cited_sentences
-                    sources = [f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence]
-                    error_message = None
-                    total_input_tokens += result.input_tokens
-                    total_output_tokens += result.output_tokens
-                    total_cache_read_tokens += result.cache_read_input_tokens
-                    total_cache_creation_tokens += result.cache_creation_input_tokens
-                except FATAL_ERRORS as exc:
-                    # Wrong key, wrong model, or a schema-rejecting request: the same
-                    # failure for every remaining row. Abort now (finally saves
-                    # everything processed so far) instead of failing 400 rows one at
-                    # a time after a full retry ladder each.
-                    click.echo(f"  row {q.row_index}: FATAL — {type(exc).__name__}: {exc}")
-                    raise click.ClickException(
-                        f"Run aborted on row {q.row_index}: {type(exc).__name__} — this error will "
-                        f"repeat for every row (check the API key, model name, and request schema). "
-                        f"Everything processed so far is saved to {output}."
-                    ) from exc
-                except Exception as exc:
-                    consecutive_errors += 1
-                    caught_exc = exc
-                    # A row that burned API calls and then raised used to report zero
-                    # tokens. generate_answer attaches the real usage to the exception
-                    # (see generate.record_usage), so the run summary reflects money
-                    # actually spent even on failed rows.
-                    row_usage = getattr(exc, "_row_usage", None)
-                    if row_usage:
-                        total_input_tokens += row_usage["input_tokens"]
-                        total_output_tokens += row_usage["output_tokens"]
-                        total_cache_read_tokens += row_usage["cache_read_input_tokens"]
-                        total_cache_creation_tokens += row_usage["cache_creation_input_tokens"]
-                    if consecutive_errors >= CONSECUTIVE_ERROR_LIMIT:
-                        click.echo(f"  row {q.row_index}: ERROR — {exc}")
+                        answer_text = result.answer
+                        vocab_selection = result.vocab_selection
+                        self_confidence = result.confidence
+                        polarity = result.polarity
+                        cited_chunk_ids = result.cited_chunk_ids
+                        cited_sentences = result.cited_sentences
+                        sources = [f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence]
+                        error_message = None
+                        total_input_tokens += result.input_tokens
+                        total_output_tokens += result.output_tokens
+                        total_cache_read_tokens += result.cache_read_input_tokens
+                        total_cache_creation_tokens += result.cache_creation_input_tokens
+                    except FATAL_ERRORS as exc:
+                        # Wrong key, wrong model, or a schema-rejecting request: the same
+                        # failure for every remaining row. Abort now (finally saves
+                        # everything processed so far) instead of failing 400 rows one at
+                        # a time after a full retry ladder each.
+                        click.echo(f"  row {q.row_index}: FATAL — {type(exc).__name__}: {exc}")
                         raise click.ClickException(
-                            f"Run aborted after {CONSECUTIVE_ERROR_LIMIT} consecutive per-row errors "
-                            f"(circuit breaker) — the failure is systemic, not per-row. Last error: {exc}. "
+                            f"Run aborted on row {q.row_index}: {type(exc).__name__} — this error will "
+                            f"repeat for every row (check the API key, model name, and request schema). "
                             f"Everything processed so far is saved to {output}."
                         ) from exc
-                    final_confidence = "error"
-                    cited_chunk_ids = []
-                    cited_sentences = []
-                    sources = []
-                    answer_text = None
-                    vocab_selection = None
-                    self_confidence = None
-                    polarity = None
-                    sub_question = q.question_text
-                    error_message = str(exc)
-                    click.echo(f"  row {q.row_index}: ERROR — {error_message}")
-                else:
-                    consecutive_errors = 0
+                    except Exception as exc:
+                        consecutive_errors += 1
+                        caught_exc = exc
+                        # A row that burned API calls and then raised used to report zero
+                        # tokens. generate_answer attaches the real usage to the exception
+                        # (see generate.record_usage), so the run summary reflects money
+                        # actually spent even on failed rows.
+                        row_usage = getattr(exc, "_row_usage", None)
+                        if row_usage:
+                            total_input_tokens += row_usage["input_tokens"]
+                            total_output_tokens += row_usage["output_tokens"]
+                            total_cache_read_tokens += row_usage["cache_read_input_tokens"]
+                            total_cache_creation_tokens += row_usage["cache_creation_input_tokens"]
+                        if consecutive_errors >= CONSECUTIVE_ERROR_LIMIT:
+                            click.echo(f"  row {q.row_index}: ERROR — {exc}")
+                            raise click.ClickException(
+                                f"Run aborted after {CONSECUTIVE_ERROR_LIMIT} consecutive per-row errors "
+                                f"(circuit breaker) — the failure is systemic, not per-row. Last error: {exc}. "
+                                f"Everything processed so far is saved to {output}."
+                            ) from exc
+                        final_confidence = "error"
+                        cited_chunk_ids = []
+                        cited_sentences = []
+                        sources = []
+                        answer_text = None
+                        vocab_selection = None
+                        self_confidence = None
+                        polarity = None
+                        sub_question = q.question_text
+                        error_message = str(exc)
+                        click.echo(f"  row {q.row_index}: ERROR — {error_message}")
+                    else:
+                        consecutive_errors = 0
 
-                elapsed = time.monotonic() - start
+                    elapsed = time.monotonic() - start
 
-                if error_message is None:
-                    in_tokens = result.input_tokens
-                    out_tokens = result.output_tokens
-                else:
-                    in_tokens = (row_usage or {}).get("input_tokens")
-                    out_tokens = (row_usage or {}).get("output_tokens")
-                row_data = {
-                    "row_index": q.row_index,
-                    "final_confidence": final_confidence,
-                    "polarity": polarity,
-                    "provider": provider,
-                    "elapsed_seconds": round(elapsed, 3),
-                    "retrieval": [
-                        {
-                            "embedding_id": c.embedding_id,
-                            "combined_score": round(c.combined_score, 4),
-                            "distance": c.vector_distance,
-                        }
-                        for c in evidence
-                    ],
-                    "input_tokens": in_tokens,
-                    "output_tokens": out_tokens,
-                    "error": error_message,
-                }
-                if error_message is None:
-                    log.debug(
-                        "row %s: %s (%.1fs)", q.row_index, final_confidence, elapsed, extra={"row_data": row_data}
-                    )
-                else:
-                    log.error(
-                        "row %s: ERROR — %s",
+                    if error_message is None:
+                        in_tokens = result.input_tokens
+                        out_tokens = result.output_tokens
+                    else:
+                        in_tokens = (row_usage or {}).get("input_tokens")
+                        out_tokens = (row_usage or {}).get("output_tokens")
+                    row_data = {
+                        "row_index": q.row_index,
+                        "final_confidence": final_confidence,
+                        "polarity": polarity,
+                        "provider": provider,
+                        "elapsed_seconds": round(elapsed, 3),
+                        "retrieval": [
+                            {
+                                "embedding_id": c.embedding_id,
+                                "combined_score": round(c.combined_score, 4),
+                                "distance": c.vector_distance,
+                            }
+                            for c in evidence
+                        ],
+                        "input_tokens": in_tokens,
+                        "output_tokens": out_tokens,
+                        "error": error_message,
+                    }
+                    if error_message is None:
+                        log.debug(
+                            "row %s: %s (%.1fs)", q.row_index, final_confidence, elapsed, extra={"row_data": row_data}
+                        )
+                    else:
+                        log.error(
+                            "row %s: ERROR — %s",
+                            q.row_index,
+                            error_message,
+                            exc_info=(type(caught_exc), caught_exc, caught_exc.__traceback__) if caught_exc else True,
+                            extra={"row_data": row_data},
+                        )
+                    caught_exc = None
+
+                    write_answer(ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence)
+                    db.record_answer(
+                        conn,
+                        run_id,
                         q.row_index,
-                        error_message,
-                        exc_info=(type(caught_exc), caught_exc, caught_exc.__traceback__) if caught_exc else True,
-                        extra={"row_data": row_data},
+                        q.question_text,
+                        sub_question,
+                        answer_text,
+                        vocab_selection,
+                        self_confidence,
+                        final_confidence,
+                        cited_chunk_ids,
+                        polarity=polarity,
+                        cited_sentences=cited_sentences,
                     )
-                caught_exc = None
+                    db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
 
-                write_answer(ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence)
-                db.record_answer(
-                    conn,
-                    run_id,
-                    q.row_index,
-                    q.question_text,
-                    sub_question,
-                    answer_text,
-                    vocab_selection,
-                    self_confidence,
-                    final_confidence,
-                    cited_chunk_ids,
-                    polarity=polarity,
-                    cited_sentences=cited_sentences,
-                )
-                db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
-
-                jsonl_file.write(
-                    json.dumps(
-                        {
-                            # run_id + timestamp on every record: the sidecar opens in append
-                            # mode, and without them two runs to the same --output interleave
-                            # into one file with no way to separate them (P20).
-                            "run_id": run_id,
-                            "ts": datetime.now(UTC).isoformat(),
-                            "row_index": q.row_index,
-                            "question_text": q.question_text,
-                            "final_confidence": final_confidence,
-                            "polarity": polarity,
-                            "provider": provider,
-                            "answer": answer_text,
-                            "error": error_message,
-                            "elapsed_seconds": round(elapsed, 2),
-                        }
+                    jsonl_file.write(
+                        json.dumps(
+                            {
+                                # run_id + timestamp on every record: the sidecar opens in append
+                                # mode, and without them two runs to the same --output interleave
+                                # into one file with no way to separate them (P20).
+                                "run_id": run_id,
+                                "ts": datetime.now(UTC).isoformat(),
+                                "row_index": q.row_index,
+                                "question_text": q.question_text,
+                                "final_confidence": final_confidence,
+                                "polarity": polarity,
+                                "provider": provider,
+                                "answer": answer_text,
+                                "error": error_message,
+                                "elapsed_seconds": round(elapsed, 2),
+                            }
+                        )
+                        + "\n"
                     )
-                    + "\n"
-                )
-                jsonl_file.flush()
+                    jsonl_file.flush()
 
-                counts[final_confidence] += 1
-                if error_message is None:
-                    click.echo(f"  row {q.row_index}: {final_confidence} ({elapsed:.1f}s)")
+                    counts[final_confidence] += 1
+                    if error_message is None:
+                        click.echo(f"  row {q.row_index}: {final_confidence} ({elapsed:.1f}s)")
 
                 if i % SAVE_EVERY_N_ROWS == 0:
                     workbook.save(output)
