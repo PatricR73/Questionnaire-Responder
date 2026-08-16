@@ -5,9 +5,11 @@ loaded Workbook object) so merged cells, section header rows, blank spacer rows,
 formatting stay untouched until an answer is actually written.
 """
 
+import csv
 import logging
 from dataclasses import dataclass
 
+from openpyxl.utils.cell import column_index_from_string
 from openpyxl.worksheet.worksheet import Worksheet
 
 log = logging.getLogger("qresp")
@@ -92,17 +94,67 @@ def _find_column(ws: Worksheet, header_row: int, keywords: tuple[str, ...], deco
     return best_col if best_score > 0 else None
 
 
+def _parse_vocab_formula(formula: str, ws: Worksheet) -> list[str] | None:
+    """Values from a list-validation formula, handling the two real formats:
+
+    - inline lists: `"Yes,No"` (optionally with the list wrapped in double quotes,
+      and values individually quoted so embedded commas survive — parsed with csv
+      semantics, not a naive split on "," which breaks any value containing one);
+    - range references: `=Lists!$A$1:$A$3` (common in enterprise templates),
+      resolved against the workbook's sheets.
+    """
+    text = (formula or "").strip()
+    if not text:
+        return None
+    if text.startswith("="):
+        ref = text[1:]
+        if "!" in ref:
+            sheet_name, range_part = ref.split("!", 1)
+            sheet_name = sheet_name.strip().strip("'")
+            target = ws.parent[sheet_name] if sheet_name in ws.parent.sheetnames else None
+            if target is None:
+                return None
+        else:
+            target = ws
+            range_part = ref
+        values = []
+        for row in target[range_part.replace("$", "")]:
+            for cell in row:
+                if cell.value is not None and str(cell.value).strip():
+                    values.append(str(cell.value).strip())
+        return values or None
+    if text.startswith('"') and text.endswith('"'):
+        # CSV semantics first: individually-quoted values survive embedded commas
+        # ("Yes","No, not yet" -> two values). If that yields a single field, the
+        # whole list was one quoted string ("Yes,No") and the comma is the list
+        # separator — split inside the quotes.
+        fields = next(csv.reader([text]), [])
+        if len(fields) > 1:
+            return [f.strip() for f in fields if f.strip()] or None
+        inner = text[1:-1]
+        fields = next(csv.reader([inner]), [])
+        return [f.strip() for f in fields if f.strip()] or None
+    fields = next(csv.reader([text]), [])
+    return [f.strip() for f in fields if f.strip()] or None
+
+
 def _vocab_values_for_column(ws: Worksheet, col: int, header_row: int) -> list[str] | None:
-    """Look for an openpyxl data validation (dropdown list) bound to this column."""
-    col_letter = ws.cell(row=header_row, column=col).column_letter
+    """Look for an openpyxl data validation (dropdown list) bound to this column.
+
+    Membership is decided with the validation's actual cell-range math (rng.min_col
+    / rng.max_col), not string containment: the old `col_letter in str(rng)` made
+    column C match a validation defined on AC1:AC10, silently picking up the wrong
+    vocabulary list. A validation bound to a full column (C:C) or any range that
+    intersects the column counts."""
+    target_col = column_index_from_string(ws.cell(row=header_row, column=col).column_letter)
     for dv in ws.data_validations.dataValidation:
         if dv.type != "list":
             continue
-        if not any(col_letter in str(rng) for rng in dv.sqref.ranges):
+        if not any(rng.min_col <= target_col <= rng.max_col for rng in dv.sqref.ranges):
             continue
-        formula = (dv.formula1 or "").strip('"')
-        if formula:
-            return [v.strip() for v in formula.split(",")]
+        values = _parse_vocab_formula(dv.formula1 or "", ws)
+        if values:
+            return values
     return None
 
 
