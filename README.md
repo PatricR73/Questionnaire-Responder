@@ -6,10 +6,9 @@ prospective enterprise customers and need a fast, honest first draft before a hu
 reviews it.
 **What it costs you today:** a few cents of Claude API spend per question row, a CLI
 and (optionally) a local Streamlit review screen — no hosting, no account, no
-subscription. Measured 58% structural match on a 24-question set (20 real CAIQ
-questions plus an adversarial subset); an honest "not found" beats a fabrication, and
-the adversarial subset's job is to catch fabrications when they happen — it caught
-two. See Results below for the real numbers.
+subscription. Measured 63% structural match on a 24-question set (20 real CAIQ
+questions plus an adversarial subset built to stress the no-fabrication goal). See
+Results below for the real numbers.
 
 <video controls width="700" poster="docs/demo.webm">
   <source src="docs/demo.webm" type="video/webm">
@@ -59,44 +58,60 @@ every tuning pass in [`TUNING_LOG.md`](fixtures/eval/TUNING_LOG.md)):
 
 | Outcome | Count |
 |---|---|
-| ✅ Structural match (status + polarity vs. expected label) | 14 / 24 (58%) |
-| ⚠️ Fabricated (asserted a control the evidence does not document) | **2 / 24** |
-| 🚫 Wrong for another reason (honest abstention, polarity mismatch) | 8 / 24 |
+| ✅ Structural match (status + polarity vs. expected label) | **15 / 24 (63%)** |
+| ⚠️ Confirmed textual fabrication (asserted a control the evidence does not document) | **0 / 24** |
+| 🚫 Wrong for another reason (honest abstention, polarity mismatch, status-mapping defect) | 9 / 24 |
 
-The two fabrications are the point of the adversarial subset: `ADV-02` (off-site
-backup storage) and `ADV-04` (an IGA platform for access reviews) are plausibly
-*implied* by the evidence but not documented, and the model answered both as if they
-were. The no-fabrication guarantee, previously only observed to hold, failed its
-first active stress test — which is exactly what the adversarial subset exists to
-find. The usable/needs-editing/wrong hand-scores published earlier (13/20 usable on
-the original 20) predate the adversarial subset and await a blind re-score per the
-scoring protocol in [`LABELING_GUIDE.md`](fixtures/eval/LABELING_GUIDE.md).
+The adversarial subset is where the numbers get honest. It was written to catch
+fabrications — questions whose answers are plausibly *implied* by the evidence but
+not documented. The first published pass reported two fabrications (`ADV-02`,
+`ADV-04`); re-reading the real captured answers against the evidence corrected
+that: `ADV-02`'s cited sentence ("Backups are stored in a separate cloud region
+from the primary production environment.") is verbatim in the evidence and directly
+states the claim — the label was wrong, not the model (relabeled `ANSWERED_AFFIRMS`
+on the evidence, see [`TUNING_LOG.md`](fixtures/eval/TUNING_LOG.md) pass 7), and
+`ADV-04`'s answer text abstains correctly ("the IGA claim cannot be confirmed")
+while the structured output reported `supported=true` — a status-mapping defect,
+not an over-assertion. The stress test's real yield: it forced a labeler error into
+the open, which is exactly the discipline the harness exists to enforce. The
+usable/needs-editing/wrong hand-scores published earlier (13/20 usable on the
+original 20) measure a different thing on a different set and await a blind re-score
+per the scoring protocol in [`LABELING_GUIDE.md`](fixtures/eval/LABELING_GUIDE.md).
 
-That 7/20 is scored as "wrong" against a strict correct/needs-editing/wrong rubric
-even though every one of those rows is a safe, honest gap rather than a fabrication —
-see [`EVAL.md`](EVAL.md) for the specific, verified cause behind each one.
+## The core design goal: never assert a control the evidence does not document
 
-## The core design constraint: this tool does not fabricate answers
+This is a design **goal with a measured failure rate**, not an unconditional
+guarantee — see the adversarial results above and [`docs/DESIGN.md`](docs/DESIGN.md)
+for the full reasoning, the enforcement layers, and the review requirements.
 
-The full reasoning, the two independent enforcement layers, and the review
-requirements live in [`docs/DESIGN.md`](docs/DESIGN.md). The one-line version: the
-tool will never assert a security control the organization has not documented, and
-every output requires human review before it goes to a customer.
+The goal: the tool will never assert a security control the organization has not
+documented. The measured status: on the 24-question adversarial subset, **no
+confirmed textual fabrication** (a claim beyond the cited evidence) has been found
+on re-examination — the two cases first reported as fabrications turned out to be a
+mislabel and a status-mapping defect, and the entailment layer (A1, behind a flag)
+now guards the over-inference gap that grounding alone cannot. The two enforcement
+layers documented in [`docs/DESIGN.md`](docs/DESIGN.md) are what they are: strong
+against invented citations, and the honest limitation is that grounding alone is
+weaker against over-inference from real citations — which is why the A1 entailment
+check exists. Every output requires human review before it goes to a customer.
 
 ## Eval results
 
-The measured baseline, on the current 24-question set, is **14/24 structural match**
-(status + polarity vs. expected label), deterministic across three runs. The
-adversarial subset (P33) — questions whose answers are plausibly implied by the
-evidence but not documented — caught its first fabrications: `ADV-02` (off-site
-backup storage) and `ADV-04` (an IGA platform for access reviews) were answered as
-documented facts. The earlier 20-question hand-scores (65% usable, 0% fabricated)
-predate that subset and await a blind re-score per the scoring protocol in
-[`LABELING_GUIDE.md`](fixtures/eval/LABELING_GUIDE.md). The historical tuning
-passes — RRF fusion reweighting (12/0/8 → 13/0/7, adopted) and the confidence
-threshold (rejected, because no value rescues the failures without also breaking a
-question that must stay abstained) — are documented in
-[`TUNING_LOG.md`](fixtures/eval/TUNING_LOG.md), alongside the retrieval-side
+The headline number: **15/24 structural match** (status + polarity vs. expected
+label) on the current 24-question set — the 20 original questions plus the
+adversarial subset. (The previously published 14/24 counted `ADV-02` as a NOT_FOUND
+regression; it was relabeled `ANSWERED_AFFIRMS` when the evidence was checked, and
+now counts as a match.) The adversarial subset's yield on re-examination: **no
+confirmed textual fabrication** — `ADV-02` was a mislabel, `ADV-04` is a
+status-mapping defect whose answer text abstains correctly. See
+[`TUNING_LOG.md`](fixtures/eval/TUNING_LOG.md) pass 7 for the full story. The
+earlier 20-question hand-scores (65% usable, 0% fabricated) are a **superseded
+hand-score on a different set**, awaiting a blind re-score per the scoring protocol
+in [`LABELING_GUIDE.md`](fixtures/eval/LABELING_GUIDE.md) — they are not the
+headline. The historical tuning passes — RRF fusion reweighting (12/0/8 → 13/0/7,
+adopted) and the confidence threshold (rejected, because no value rescues the
+failures without also breaking a question that must stay abstained) — are documented
+in [`TUNING_LOG.md`](fixtures/eval/TUNING_LOG.md), alongside the retrieval-side
 measurements of the P8/P10/P11/P12 changes.
 
 Reproduce these numbers yourself with `python fixtures/eval/run_eval.py`. Full

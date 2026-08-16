@@ -6,15 +6,15 @@ priority order. The README keeps the what/why, the results, quickstart, usage, a
 links — the reasoning moved here so a reader reaches the code faster without
 losing any of it.
 
-## The core design constraint: this tool does not fabricate answers
+## The core design goal: never assert a control the evidence does not document
 
 A wrong answer on a security questionnaire isn't a typo — it's a written
 representation to a prospective customer about what the company actually does. If the
 tool asserts a control that doesn't exist ("yes, we run quarterly penetration tests")
 because that's what a security questionnaire *usually* says, that's not a bug the
 customer will shrug off; it's a false statement in a document that may end up
-referenced in a contract. So the tool is built around one non-negotiable rule: **it
-will never assert a security control the organization has not documented.** If the
+referenced in a contract. So the tool is built around one non-negotiable goal: **never
+assert a security control the organization has not documented.** If the
 evidence base doesn't support an answer, the tool does not guess, does not extrapolate
 from "typical" industry practice, and does not fill the gap with a plausible-sounding
 claim. That row is left with the literal marker `NOT FOUND IN PROVIDED DOCUMENTS`
@@ -22,8 +22,19 @@ instead. An honest gap is a cheap problem — someone writes the missing policy 
 answers the row by hand. A confident fabrication is an expensive one, discovered only
 when it's already been relied on.
 
-This is enforced twice, independently, on purpose — one mechanism trusting itself is
-exactly how this kind of guarantee quietly erodes:
+**Goal, not guarantee — with a measured failure rate.** The README's results table
+is the honest accounting, and the adversarial subset (four questions whose answers
+are plausibly implied by the evidence but, at labeling time, judged not documented)
+exists specifically to stress the goal. The first published pass reported two
+fabrications; re-reading the real captured answers against the evidence corrected
+that — one was a mislabel (the evidence does document the claim; the label was fixed)
+and one is a status-mapping defect (the answer text abstains correctly). No confirmed
+textual fabrication — a claim beyond the cited evidence — has been found so far. That
+is a measured outcome, not a guarantee: the subset is small, and the whole point of
+recording the number is that the next run can change it.
+
+The goal is enforced by independent layers, on purpose — one mechanism trusting
+itself is exactly how this kind of guarantee quietly erodes:
 
 1. The system prompt in `src/answer/generate.py` instructs Claude that no-evidence
    questions must return an empty, unsupported answer — this is documented as the
@@ -32,6 +43,14 @@ exactly how this kind of guarantee quietly erodes:
    every sentence Claude cites as support actually appears verbatim in the evidence
    text that was retrieved. A citation that doesn't check out forces the answer back
    down to "not found," regardless of what Claude claims about itself.
+
+These two layers are strong against *invented* citations. Their honest limitation —
+the reason the adversarial subset exists — is that grounding alone is weaker against
+*over-inference from real citations*: quoting a real sentence verbatim is not the
+same as the answer following from it. The third layer (`src/answer/entailment.py`,
+A1, behind the `entailment_check` flag) closes that gap: a separate cheap call
+receiving only the answer and its citations judges whether every factual claim is
+stated in them. It is off by default until its false-positive cost is measured.
 
 The same two-layer pattern is applied to vocabulary selection: the per-request
 structured-output schema constrains `vocab_selection` to the sheet's actual value

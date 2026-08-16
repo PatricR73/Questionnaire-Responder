@@ -46,34 +46,42 @@ judgment call (see the methodology above), not something to automate.
 The 60% → 65% numbers below are the historical hand-scored baseline on the original
 20-question set. The corpus has since grown to 24 questions with an adversarial
 subset (P33), and the current measured baseline is the structural match:
-**14/24 across three deterministic runs** — with two of the four adversarial
-questions answered as documented facts. That is the first measured breach of the
-no-fabrication guarantee, and it changes what the honest summary looks like:
+**15/24 across three deterministic runs** — after the `ADV-02` label correction
+(see TUNING_LOG pass 7), the number that was first published as 14/24. The
+adversarial subset's yield on re-examination: **no confirmed textual fabrication** —
+the two cases first reported as fabrications are a mislabel (`ADV-02`: the evidence
+verbatim documents the claimed control; relabeled `ANSWERED_AFFIRMS`) and a
+status-mapping defect (`ADV-04`: the answer text abstains correctly but the
+structured output reported `supported=true`). That is a measured outcome, not a
+guarantee — the subset is four questions, and the point of recording the number is
+that the next run can change it.
 
 | | Historical (20 questions, hand-scored) | Current (24 questions, structural) |
 |---|---|---|
-| usable / structural match | 13 (65%) | 14 / 24 (58%) |
+| usable / structural match | 13 (65%) | 15 / 24 (63%) |
 | needs-editing | 0 | n/a (pending blind re-score) |
-| wrong | 7 (35%) | 8 / 24 — of which **2 are fabrications** (ADV-02, ADV-04) |
+| wrong | 7 (35%) | 9 / 24 — of which **0 confirmed textual fabrications** (1 mislabel corrected, 1 status-mapping defect) |
 
-The two fabrications are not a regression in the model's behavior; they are the
-adversarial subset doing its job. The guarantee was previously only *observed* to
-hold (no question actively tried to break it); ADV-02 (off-site backup storage) and
-ADV-04 (an IGA platform for access reviews) are plausibly implied by the evidence
-but not documented, and the model answered both. Any claim of "0% fabricated" now
-comes with the qualifier "on the questions that were actively trying to catch one —
-two of four slipped through."
+The adversarial subset did its job even though the first pass misread the outcome:
+it forced a labeler error into the open (`ADV-02`'s label claimed the storage
+location was "not documented" while the evidence says otherwise) — the harness
+correcting its own labels is the same discipline that corrected `IVS-03.2`.
+`ADV-04` remains a real finding: a hedged abstention can be recorded as `ANSWERED`
+when the structured output claims `supported=true`, which the structural scorer
+counts as a NOT_FOUND regression. Any claim of "0% fabricated" comes with the
+qualifier "no confirmed textual fabrication on the adversarial subset as labeled
+after re-verification."
 
 **The 0 in needs-editing was not a rounding error on the historical set, and it is
 still worth reading correctly as far as it went.** This system's failure mode was
 binary: it either produced a complete, accurate, appropriately-hedged answer, or it
 silently said nothing. The adversarial subset shows the binary can fail in the other
-direction too — confidently asserting an implied control as documented — which is
-precisely why the subset exists. The usable/needs-editing/wrong hand-scores for the
-24-question set await a blind re-score per the scoring protocol in
-`fixtures/eval/LABELING_GUIDE.md`.
+direction too — or, as it turned out on re-examination, that a status flag can lie
+about a text that abstains — which is precisely why the subset exists. The
+usable/needs-editing/wrong hand-scores for the 24-question set await a blind re-score
+per the scoring protocol in `fixtures/eval/LABELING_GUIDE.md`.
 
-**65% was not a high number then, and 58% is not one now — and this document is not
+**65% was not a high number then, and 63% is not one now — and this document is not
 going to dress either up.**
 The value of a baseline isn't the percentage — it's that every wrong answer has a
 specific, named, verified cause, not a shrug:
