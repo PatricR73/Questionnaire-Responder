@@ -182,3 +182,49 @@ passes are not empty; each needs a re-run (`python fixtures/eval/run_eval.py
 --repeats 3`) with a positive credit balance to complete. The completed baseline —
 24 questions, 14/24 structural match, ADV-02/ADV-04 fabrications — is the reference
 point everything else compares against.
+## Pass 7 — entailment (support) check (`src/answer/entailment.py`), A1
+
+**Result: layer implemented behind a flag (default OFF); live eval BLOCKED on API
+credits; the motivating "fabrications" were re-examined and one was a mislabel.**
+
+The adversarial run marked `ADV-02` and `ADV-04` as fabrications — the model
+"quoted real sentences, passed grounding, and asserted a control those sentences
+merely make plausible". Reading the REAL captured data (run A store) contradicts that
+for both:
+
+- **`ADV-02` is not a fabrication — the label was wrong.** The captured citation,
+  "Backups are stored in a separate cloud region from the primary production
+  environment.", is verbatim in `business_continuity_plan.docx` and DIRECTLY states
+  the claimed control. The labeling-guide note claimed the storage location was "not
+  documented" — the evidence says otherwise. `ADV-02` was relabeled
+  `ANSWERED_AFFIRMS` on the evidence (same rule as the `IVS-03.2` correction). The
+  entailment layer correctly does NOT flag a grounded claim.
+- **`ADV-04`'s answer text is a correct abstention.** Its captured answer says the
+  IGA claim "cannot be confirmed" and its factual claims are all grounded; the defect
+  is that the structured output reported `supported=true`, so the pipeline recorded
+  `ANSWERED`. That is a status-mapping/prompt-compliance issue, not an entailment
+  failure. The entailment layer must not flag a grounded hedge.
+
+The layer itself is still the right architecture for the gap the pack identified —
+grounding checks citation fidelity, not whether the answer follows from the
+citations — and it is implemented exactly as specified: a separate cheap Claude call
+receiving ONLY the drafted answer and cited sentences (no question, no other chunks),
+behind the `entailment_check` config flag (default OFF so the baseline stays
+reproducible), using `entailment_model` (default `claude-sonnet-5`, set to the
+cheapest capable tier on the account), with its tokens logged separately in the run
+summary so the price of the guarantee is visible. The mechanism is proven by a
+constructed over-assertion (an answer claiming an underground bunker, absent from its
+citation) which is downgraded to `none`.
+
+**Eval status:** the `--repeats 3` with/without comparison could not be run — the
+API credit balance is still exhausted (every `answer` row calls the checker when the
+flag is on, so both legs need credits). The false-positive cost (how many correct
+answers the checker wrongly kills) is therefore unmeasured and the flag stays OFF.
+Re-run `python fixtures/eval/run_eval.py --repeats 3` with the flag on and off once
+credits are available; if the checker kills more good answers than it catches, that is
+a real result and the flag stays off.
+
+**Baseline note:** with `ADV-02` relabeled to `ANSWERED_AFFIRMS`, the published
+14/24 baseline is now 15/24 (the ADV-02 row was counted as a NOT_FOUND regression
+before; it is a match under the corrected label) — the corrected number replaces the
+old one in README/EVAL.

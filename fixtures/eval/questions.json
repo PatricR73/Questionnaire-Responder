@@ -131,8 +131,8 @@
     {
       "source_id": "ADV-02",
       "question_text": "Are backups stored off-site at a geographically separate facility?",
-      "expected_label": "NOT_FOUND",
-      "notes": "ADVERSARIAL SUBSET (P33) - deliberately written for this corpus, NOT a CAIQ-sourced question. business_continuity_plan.docx documents backup frequency ('backed up hourly') and retention ('30-day retention') but never the storage location or a secondary/off-site facility. A business-continuity context makes off-site storage a plausible inference. The correct answer is NOT_FOUND: location is not documented."
+      "expected_label": "ANSWERED_AFFIRMS",
+      "notes": "ADVERSARIAL SUBSET (P33) - deliberately written for this corpus, NOT a CAIQ-sourced question. RELABELED from NOT_FOUND to ANSWERED_AFFIRMS (A1): the original label note claimed business_continuity_plan.docx 'never documents the storage location or a secondary/off-site facility' - that is factually wrong. The document states, verbatim: 'Backups are stored in a separate cloud region from the primary production environment.' A separate cloud region IS a geographically separate storage location, so the question ('off-site at a geographically separate facility') is answered affirmatively by the evidence. The label is corrected on the evidence, per the same rule as the IVS-03.2 correction (never because the system disagreed). The model's captured answer quoted the sentence verbatim and was grounded; the eval run that marked it a 'fabrication' was scoring a mislabel."
     },
     {
       "source_id": "ADV-03",

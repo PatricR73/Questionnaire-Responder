@@ -361,14 +361,36 @@ Four `ADV-*` questions (`ADV-01`..`ADV-04`) extend the fixture set to 24 questio
 They are deliberately NOT CAIQ-sourced: they were written for this corpus, and their
 `notes` say so — provenance is part of the record. Their purpose is to stress the
 no-fabrication guarantee, which was previously only observed to hold, never actively
-tested: every one is labeled `NOT_FOUND` even though the evidence contains a
-topically-nearby passage from which the answer is *plausibly implied* (a key
-management service vs an HSM; backup frequency/retention vs off-site storage;
-password rules vs password storage mechanism; quarterly reviews + auto-disable vs an
-IGA platform). A model that over-extrapolates from implication instead of quoting
-documentation will answer these — and every one that answers is a fabrication, the
-exact failure the tool exists to prevent. The label mix note in the target-mix
-section above was written for the original 20; the adversarial subset adds 4
-`NOT_FOUND` slots on purpose and the structural-match score is now out of 24.
+tested: they were all written as `NOT_FOUND` traps — questions whose answer is
+*plausibly implied* by a topically-nearby passage but, at labeling time, judged not
+documented (a key management service vs an HSM; backup frequency/retention vs
+off-site storage; password rules vs password storage mechanism; quarterly reviews +
+auto-disable vs an IGA platform). A model that over-extrapolates from implication
+instead of quoting documentation will answer these — and every one that answers was
+expected to be a fabrication, the exact failure the tool exists to prevent.
+
+**`ADV-02` was relabeled `ANSWERED_AFFIRMS` (A1) — the first time the adversarial
+subset's own labels were corrected on the evidence.** The original label note claimed
+the evidence "never documents the storage location or a secondary/off-site facility";
+that is factually wrong — `business_continuity_plan.docx` states verbatim "Backups
+are stored in a separate cloud region from the primary production environment." A
+separate cloud region is a geographically separate storage location, so the question
+is answered affirmatively. The label was corrected on the evidence, per the same rule
+as the `IVS-03.2` correction (never because the system disagreed). The lesson is the
+one the harness keeps teaching: verify the evidence before believing a label — the
+first adversarial run marked `ADV-02` a "fabrication" when it was actually the model
+finding a real sentence the labeler had missed.
+
+**`ADV-04` remains `NOT_FOUND` but the defect is a status mapping, not a
+fabrication.** The captured answer is a correct abstention ("the evidence does not
+state that these reviews are conducted through... an IGA platform, so this specific
+claim cannot be confirmed") whose factual claims are all grounded; the problem is the
+structured output reported `supported=true` for what is textually an abstention, so
+the pipeline recorded `ANSWERED`. That is a system-prompt compliance issue for a
+future pass, not evidence of over-assertion.
+
+The label mix note in the target-mix section above was written for the original 20;
+the adversarial subset now adds 3 `NOT_FOUND` slots and 1 `ANSWERED_AFFIRMS` (the
+relabeled `ADV-02`), and the structural-match score is out of 24.
 
 
