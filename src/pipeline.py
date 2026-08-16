@@ -32,6 +32,7 @@ import os
 import time
 from pathlib import Path
 
+import anthropic
 import click
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
@@ -46,6 +47,27 @@ from src.store import db
 from src.store.vectorstore import VectorStore
 
 SAVE_EVERY_N_ROWS = 5
+
+# Errors that will fail EVERY row identically and are never worth a per-row retry
+# ladder: a 401 (AuthenticationError), a permission problem, a wrong model name
+# (NotFoundError), or a schema-rejecting 400 (BadRequestError). Caught per-row
+# today, each of these burns the full retry budget on every one of 400 rows and
+# produces a workbook of red ERROR cells instead of stopping in the first ten
+# seconds. They propagate out of the per-row handler and abort the run — the
+# finally save still writes everything already processed, so no paid-for work is
+# lost. Anything not in this set is treated as transient per-row noise.
+FATAL_ERRORS = (
+    anthropic.AuthenticationError,
+    anthropic.PermissionDeniedError,
+    anthropic.NotFoundError,
+    anthropic.BadRequestError,
+)
+
+# Circuit breaker: N consecutive per-row errors (of any kind) abort the run. A
+# systemic failure that isn't in FATAL_ERRORS — e.g. a network path that breaks for
+# everyone, or an environment issue — would otherwise burn the whole sheet one row
+# at a time; a healthy run never sees anywhere near this many in a row.
+CONSECUTIVE_ERROR_LIMIT = 5
 
 STUB_BANNER_TEXT = "⚠ STUB PROVIDER — THESE ARE NOT REAL ANSWERS (TESTING ONLY)"
 STUB_BANNER_FILL = PatternFill(start_color="D32F2F", end_color="D32F2F", fill_type="solid")
@@ -119,6 +141,7 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     counts = {"high": 0, "low": 0, "none": 0, "error": 0}
     total_input_tokens = 0
     total_output_tokens = 0
+    consecutive_errors = 0
 
     try:
         with open(jsonl_path, "a") as jsonl_file:
@@ -145,7 +168,26 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                     error_message = None
                     total_input_tokens += result.input_tokens
                     total_output_tokens += result.output_tokens
+                except FATAL_ERRORS as exc:
+                    # Wrong key, wrong model, or a schema-rejecting request: the same
+                    # failure for every remaining row. Abort now (finally saves
+                    # everything processed so far) instead of failing 400 rows one at
+                    # a time after a full retry ladder each.
+                    click.echo(f"  row {q.row_index}: FATAL — {type(exc).__name__}: {exc}")
+                    raise click.ClickException(
+                        f"Run aborted on row {q.row_index}: {type(exc).__name__} — this error will "
+                        f"repeat for every row (check the API key, model name, and request schema). "
+                        f"Everything processed so far is saved to {output}."
+                    ) from exc
                 except Exception as exc:  # noqa: BLE001 — per-row isolation is the point
+                    consecutive_errors += 1
+                    if consecutive_errors >= CONSECUTIVE_ERROR_LIMIT:
+                        click.echo(f"  row {q.row_index}: ERROR — {exc}")
+                        raise click.ClickException(
+                            f"Run aborted after {CONSECUTIVE_ERROR_LIMIT} consecutive per-row errors "
+                            f"(circuit breaker) — the failure is systemic, not per-row. Last error: {exc}. "
+                            f"Everything processed so far is saved to {output}."
+                        ) from exc
                     final_confidence = "error"
                     cited_chunk_ids = []
                     sources = []
@@ -156,6 +198,8 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                     sub_question = q.question_text
                     error_message = str(exc)
                     click.echo(f"  row {q.row_index}: ERROR — {error_message}")
+                else:
+                    consecutive_errors = 0
 
                 elapsed = time.monotonic() - start
 

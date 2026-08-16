@@ -8,6 +8,7 @@ plumbing around it. Read it as a contract, not a suggestion.
 
 import json
 import os
+import random
 import time
 from dataclasses import dataclass
 
@@ -15,8 +16,13 @@ from src.retrieval.hybrid_search import RetrievedChunk
 
 MODEL = "claude-sonnet-5"
 REQUEST_TIMEOUT_SECONDS = 30.0
+# MAX_RETRIES is the TOTAL attempt budget per request: 1 initial attempt + 2
+# retries. (The old loop started attempt at 0 and raised at attempt >= 3, which
+# silently allowed 4 attempts — the retry policy should say what it means.)
 MAX_RETRIES = 3
 RETRY_BASE_DELAY_SECONDS = 1.0
+RETRY_MAX_DELAY_SECONDS = 30.0
+RETRY_JITTER_SECONDS = 0.5
 
 # Eval reproducibility, not a stylistic choice: the Anthropic SDK's default sampling
 # temperature is 1.0, so before this constant existed every run was a fresh stochastic
@@ -206,7 +212,10 @@ def generate_answer(
 
     import anthropic
 
-    client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT_SECONDS)
+    # max_retries=0: the SDK's own retry layer must not sit underneath the
+    # hand-rolled loop below — with both active, a rate-limited row could issue
+    # roughly a dozen requests. Retry policy lives in exactly one place.
+    client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT_SECONDS, max_retries=0)
     retryable = (anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APITimeoutError, anthropic.APIConnectionError)
 
     def create_message(user_content: str):
@@ -236,16 +245,32 @@ def generate_answer(
                 return client.messages.create(**kwargs)
             raise
 
+    def retry_delay(attempt: int, exc: BaseException) -> float:
+        """Backoff for one retry: exponential with jitter, honouring Retry-After on
+        rate limits (the API tells you when it wants you back; exponential backoff
+        alone ignores that signal and can hammer a cooldown). Capped so a hostile
+        Retry-After can't stall the run for minutes."""
+        if isinstance(exc, anthropic.RateLimitError):
+            headers = getattr(exc, "response", None).headers if getattr(exc, "response", None) else {}
+            retry_after = headers.get("retry-after")
+            if retry_after:
+                try:
+                    return min(float(retry_after), RETRY_MAX_DELAY_SECONDS)
+                except (TypeError, ValueError):
+                    pass
+        delay = RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
+        return min(delay, RETRY_MAX_DELAY_SECONDS) + random.uniform(0, RETRY_JITTER_SECONDS)
+
     def call(user_content: str):
-        attempt = 0
+        attempt = 0  # failures so far; the initial attempt is free
         while True:
             try:
                 return create_message(user_content)
-            except retryable:
+            except retryable as exc:
+                attempt += 1
                 if attempt >= MAX_RETRIES:
                     raise
-                time.sleep(RETRY_BASE_DELAY_SECONDS * (2**attempt))
-                attempt += 1
+                time.sleep(retry_delay(attempt, exc))
 
     base_message = _build_user_message(question, evidence_chunks, vocab_values)
     response = call(base_message)
