@@ -25,6 +25,28 @@ class VectorStore:
     def upsert(self, ids: list[str], texts: list[str], metadatas: list[dict]) -> None:
         self._collection.upsert(ids=ids, documents=texts, metadatas=metadatas)
 
+    def delete_by_source(self, source_key: str) -> None:
+        """Remove every entry belonging to one source document.
+
+        Used by ingest on re-ingest so a shorter re-version of a source can't leave
+        trailing chunks behind (see src/ingest/embed.py). Deleting nothing when the
+        source isn't in the collection is a legitimate no-op. Keyed on the
+        source_filename metadata, which ingest stores as the evidence-relative path
+        (see embed._source_key), so same-named files in different subdirectories are
+        distinct sources here too."""
+        self._collection.delete(where={"source_filename": source_key})
+
+    def get(self, ids: list[str]) -> list[str]:
+        """Return the subset of ids actually present in the collection. Exists so
+        ingest tests can prove stale chunks were deleted from the vector store, not
+        just from SQLite."""
+        return self._collection.get(ids=ids)["ids"]
+
+    def count(self) -> int:
+        """Number of entries in the collection (another ingest-test hook: after a
+        shortened re-ingest the count must equal the new chunk total, never the old)."""
+        return self._collection.count()
+
     def query(self, text: str, top_k: int = 5) -> list[dict]:
         result = self._collection.query(query_texts=[text], n_results=top_k)
         hits = []
