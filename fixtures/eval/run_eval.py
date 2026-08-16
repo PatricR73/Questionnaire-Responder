@@ -57,7 +57,32 @@ EXPECTED_STATUS = {
     "AMBIGUOUS_EVIDENCE": "ANSWERED",
     "NOT_FOUND": "NOT_FOUND",
 }
+# Expected polarity for each label, compared for every ANSWERED row. A label that
+# expects a polarity and gets a different one is a structural mismatch — the
+# harness used to print polarity without ever comparing it, so a question labeled
+# ANSWERED_DENIES that came back affirming scored as a match, blind to exactly the
+# distinction (we prohibit shared accounts vs we permit them) the polarity field
+# was introduced to capture.
+#
+# AMBIGUOUS_EVIDENCE maps to "partial", per system-prompt rule 8: a contradiction
+# must be surfaced as both claims attributed to their sources with polarity
+# "partial" — never reconciled into one coherent polarity — so "partial" is the
+# only polarity that counts as a match for those fixtures. This is a deliberate
+# decision made here and recorded in TUNING_LOG.md; it matches how rule 8 already
+# routes contradictions through the existing partial/low path.
+EXPECTED_POLARITY = {
+    "ANSWERED_AFFIRMS": "affirms",
+    "ANSWERED_DENIES": "denies",
+    "ANSWERED_PARTIAL": "partial",
+    "AMBIGUOUS_EVIDENCE": "partial",
+    "NOT_FOUND": None,
+}
 NOT_FOUND_LABEL = "NOT_FOUND"
+# An affirms<->denies swap is a materially worse outcome than a missed answer — the
+# row asserts the OPPOSITE of the documented fact — so it gets its own called-out
+# regression line rather than being buried in the aggregate (same convention as the
+# NOT_FOUND regression line).
+_POLARITY_INVERSIONS = {"affirms": "denies", "denies": "affirms"}
 
 # 1.959963984540054 = the 97.5th percentile of the standard normal (z for 95%).
 _WILSON_Z = 1.959963984540054
@@ -127,17 +152,31 @@ def load_run_rows(output_path: Path) -> list[dict]:
 
 
 def structural_match(expected_label: str, status: str, polarity: str | None) -> bool:
-    """Status/polarity vs. expected label. Polarity is not yet compared (added in the
-    polarity-scoring pass); status alone decides the structural match for now."""
-    return status == EXPECTED_STATUS[expected_label]
+    """Status/polarity vs. expected label. Polarity is compared for every ANSWERED
+    label that expects one (see EXPECTED_POLARITY); NOT_FOUND rows match on status
+    alone."""
+    if status != EXPECTED_STATUS[expected_label]:
+        return False
+    expected_polarity = EXPECTED_POLARITY[expected_label]
+    if expected_polarity is None:
+        return True
+    return polarity == expected_polarity
 
 
-def score_run(rows: list[dict]) -> tuple[int, list[str]]:
-    matches = sum(1 for r in rows if structural_match(r["expected_label"], r["status"], r["polarity"]))
-    not_found_regressions = [
-        r["source_id"] for r in rows if r["expected_label"] == NOT_FOUND_LABEL and r["status"] == "ANSWERED"
-    ]
-    return matches, not_found_regressions
+def score_run(rows: list[dict]) -> tuple[int, list[str], list[str]]:
+    matches = 0
+    not_found_regressions = []
+    polarity_inversions = []
+    for r in rows:
+        expected_label = r["expected_label"]
+        status = r["status"]
+        polarity = r["polarity"]
+        matches += structural_match(expected_label, status, polarity)
+        if expected_label == NOT_FOUND_LABEL and status == "ANSWERED":
+            not_found_regressions.append(r["source_id"])
+        if EXPECTED_POLARITY[expected_label] in _POLARITY_INVERSIONS and polarity == _POLARITY_INVERSIONS[EXPECTED_POLARITY[expected_label]]:
+            polarity_inversions.append(r["source_id"])
+    return matches, not_found_regressions, polarity_inversions
 
 
 def wilson_interval(k: int, n: int) -> tuple[float, float]:
@@ -155,7 +194,7 @@ def wilson_interval(k: int, n: int) -> tuple[float, float]:
     return (max(0.0, center - half), min(1.0, center + half))
 
 
-def print_run_detail(rows: list[dict], not_found_regressions: list[str]) -> None:
+def print_run_detail(rows: list[dict], not_found_regressions: list[str], polarity_inversions: list[str]) -> None:
     print()
     print("=" * 100)
     for r in rows:
@@ -178,6 +217,10 @@ def print_run_detail(rows: list[dict], not_found_regressions: list[str]) -> None
         print(f"!!! REGRESSION: these NOT_FOUND questions came back ANSWERED: {not_found_regressions}")
     else:
         print("No NOT_FOUND regressions.")
+    if polarity_inversions:
+        print(f"!!! POLARITY INVERSION: these questions answered the OPPOSITE of their expected polarity: {polarity_inversions}")
+    else:
+        print("No polarity inversions.")
 
 
 def main():
@@ -207,16 +250,18 @@ def main():
     per_run_rows: list[list[dict]] = []
     per_run_matches: list[int] = []
     per_run_regressions: list[list[str]] = []
+    per_run_inversions: list[list[str]] = []
 
     for i, output_path in enumerate(outputs, start=1):
         print(f"\n=== Repeat {i}/{repeats} (output: {output_path.name}) ===")
         run_pipeline(output_path)
         rows = load_run_rows(output_path)
-        matches, not_found_regressions = score_run(rows)
+        matches, not_found_regressions, polarity_inversions = score_run(rows)
         per_run_rows.append(rows)
         per_run_matches.append(matches)
         per_run_regressions.append(not_found_regressions)
-        print_run_detail(rows, not_found_regressions)
+        per_run_inversions.append(polarity_inversions)
+        print_run_detail(rows, not_found_regressions, polarity_inversions)
 
     n_questions = len(per_run_rows[0])
 
@@ -237,6 +282,8 @@ def main():
     print()
     print("=" * 100)
     print(f"Structural match per run: {per_run_matches}")
+    print(f"NOT_FOUND regressions per run: {per_run_regressions}")
+    print(f"Polarity inversions per run: {per_run_inversions}")
     mean_matches = statistics.mean(per_run_matches)
     print(
         f"min/mean/max across {repeats} run(s): {min(per_run_matches)} / {mean_matches:.1f} / "
