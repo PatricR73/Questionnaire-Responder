@@ -90,14 +90,20 @@ class AnthropicAnswerer(Answerer):
     ) -> AnswerResult:
         draft = generate_answer(question, chunks, vocab_values)
         final_confidence = cross_check_confidence(draft, chunks)
-        cited_chunk_ids = [c.embedding_id for c in chunks]
+        # Only chunks whose text actually contained a cited sentence count as cited —
+        # recording every retrieved chunk here is what made the review UI display all
+        # 5 passages under "Cited evidence" and is what a future "distance of the
+        # specific cited chunk" confidence redesign needs recorded to work at all.
+        # Not-found rows carry [] for the same reason StubAnswerer's do: nothing was
+        # cited.
+        cited_chunk_ids = sorted(final_confidence.cited_ids)
 
         if final_confidence == "none":
             return AnswerResult(
                 answer="",
                 status=AnswerStatus.NOT_FOUND,
                 confidence=None,
-                cited_chunk_ids=cited_chunk_ids,
+                cited_chunk_ids=[],
                 provider=self.provider_name,
                 vocab_selection=None,
                 input_tokens=draft.input_tokens,
@@ -107,7 +113,7 @@ class AnthropicAnswerer(Answerer):
         return AnswerResult(
             answer=draft.answer,
             status=AnswerStatus.ANSWERED,
-            confidence=final_confidence,  # "high" or "low"
+            confidence=str(final_confidence),  # "high" or "low" (plain str — the GroundedConfidence cited-ids metadata belongs to this decision, not to consumers of the result)
             cited_chunk_ids=cited_chunk_ids,
             provider=self.provider_name,
             vocab_selection=draft.vocab_selection,
