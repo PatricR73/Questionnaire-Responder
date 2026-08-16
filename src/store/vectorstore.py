@@ -15,6 +15,17 @@ DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 # model kwargs; re-derive the eval numbers if it ever has to move.
 DEFAULT_MODEL_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
 
+# BAAI's bge-*-en-v1.5 embedding models are trained for an asymmetric retrieval
+# setup: the QUERY side must carry this instruction prefix while stored passages
+# stay unprefixed. Omitting it costs recall on exactly the asymmetric
+# short-query-to-long-passage case this project has (a CAIQ question against
+# long policy chunks). Applied on the query path only (VectorStore.query) — never
+# on upsert, where the prefix would corrupt the passage embeddings and invalidate
+# every stored distance. REVISIT if DEFAULT_MODEL changes to a non-bge model: the
+# prefix is specific to the bge-*-v1.5 training recipe and would degrade other
+# models' embeddings if applied to them.
+BGE_QUERY_PREFIX = "Represent this sentence for searching relevant passages: "
+
 
 class VectorStore:
     def __init__(
@@ -76,7 +87,9 @@ class VectorStore:
         return self._collection.count()
 
     def query(self, text: str, top_k: int = 5) -> list[dict]:
-        result = self._collection.query(query_texts=[text], n_results=top_k)
+        # Query-only instruction prefix — see BGE_QUERY_PREFIX. The stored passage
+        # embeddings were built unprefixed at ingest; only the query side changes.
+        result = self._collection.query(query_texts=[BGE_QUERY_PREFIX + text], n_results=top_k)
         hits = []
         for i in range(len(result["ids"][0])):
             hits.append(
