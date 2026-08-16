@@ -15,6 +15,11 @@ from dataclasses import dataclass
 from src.retrieval.hybrid_search import RetrievedChunk
 
 MODEL = "claude-sonnet-5"
+MAX_TOKENS = 1024
+# Truncation is retried once at this higher limit (a rule-8 conflicting-evidence
+# answer plus several verbatim cited_sentences can legitimately exceed 1024); the
+# corrective-suffix retry is NOT used for truncation — same limit, same truncation.
+TRUNCATION_RETRY_MAX_TOKENS = 2 * MAX_TOKENS
 REQUEST_TIMEOUT_SECONDS = 30.0
 # MAX_RETRIES is the TOTAL attempt budget per request: 1 initial attempt + 2
 # retries. (The old loop started attempt at 0 and raised at attempt >= 3, which
@@ -175,7 +180,37 @@ class MalformedAnswerError(RuntimeError):
     would misrepresent a processing failure as a verified absence of evidence."""
 
 
-def _extract_answer_payload(response) -> dict:
+class AnswerTruncatedError(RuntimeError):
+    """The response hit the max_tokens generation limit and was cut off mid-output.
+
+    Deliberately distinct from MalformedAnswerError: a truncated response is not a
+    schema violation, and retrying it with the same limit (the malformed path's
+    corrective retry) would truncate again. generate_answer retries ONCE at a higher
+    limit and otherwise fails the row cleanly with this diagnosis — callers
+    (pipeline.py) record it as AnswerStatus.ERROR, never as NOT_FOUND."""
+
+
+def _check_truncation(response, max_tokens: int) -> None:
+    """Raise AnswerTruncatedError when the model ran out of generation budget.
+
+    stop_reason == "max_tokens" means the output was CUT OFF mid-generation —
+    typically a long rule-8 conflicting-evidence answer plus several verbatim
+    cited_sentences — so the truncated text is not valid JSON for a real reason
+    distinct from malformation, and the corrective-retry path (which exists for
+    schema violations) would retry with the SAME limit and truncate again.
+    Detected before any JSON parse attempt, so the diagnosis is the cause, not a
+    JSON error."""
+    if response.stop_reason == "max_tokens":
+        raise AnswerTruncatedError(
+            f"Response was truncated by the max_tokens limit ({max_tokens}): stop_reason=max_tokens "
+            f"with the output cut off mid-generation. A longer limit is needed (long conflicting-"
+            f"evidence answers plus several verbatim cited_sentences exceed 1024 tokens); retrying "
+            f"with the same limit would truncate again."
+        )
+
+
+def _extract_answer_payload(response, max_tokens: int = MAX_TOKENS) -> dict:
+    _check_truncation(response, max_tokens)
     text_block = next((block for block in response.content if block.type == "text"), None)
     if text_block is None:
         block_types = [block.type for block in response.content]
@@ -218,7 +253,7 @@ def generate_answer(
     client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT_SECONDS, max_retries=0)
     retryable = (anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APITimeoutError, anthropic.APIConnectionError)
 
-    def create_message(user_content: str):
+    def create_message(user_content: str, max_tokens: int = MAX_TOKENS):
         """client.messages.create with the reproducibility temperature applied.
 
         See TEMPERATURE's docstring: some models reject the parameter outright. Probe
@@ -227,7 +262,7 @@ def generate_answer(
         global _TEMPERATURE_DEPRECATED
         kwargs = {
             "model": MODEL,
-            "max_tokens": 1024,
+            "max_tokens": max_tokens,
             "temperature": TEMPERATURE,
             "system": SYSTEM_PROMPT,
             "output_config": {"format": {"type": "json_schema", "schema": build_answer_schema(vocab_values)}},
@@ -261,11 +296,11 @@ def generate_answer(
         delay = RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
         return min(delay, RETRY_MAX_DELAY_SECONDS) + random.uniform(0, RETRY_JITTER_SECONDS)
 
-    def call(user_content: str):
+    def call(user_content: str, max_tokens: int = MAX_TOKENS):
         attempt = 0  # failures so far; the initial attempt is free
         while True:
             try:
-                return create_message(user_content)
+                return create_message(user_content, max_tokens=max_tokens)
             except retryable as exc:
                 attempt += 1
                 if attempt >= MAX_RETRIES:
@@ -278,7 +313,16 @@ def generate_answer(
     total_output_tokens = response.usage.output_tokens
 
     try:
-        payload = _extract_answer_payload(response)
+        payload = _extract_answer_payload(response, MAX_TOKENS)
+    except AnswerTruncatedError:
+        # Truncation is not malformation: retry ONCE at a higher limit — the
+        # corrective-suffix retry would use the same limit and truncate again. If
+        # the higher limit also truncates, the second AnswerTruncatedError
+        # propagates as the row's real diagnosis (pipeline.py records it as ERROR).
+        response = call(base_message, max_tokens=TRUNCATION_RETRY_MAX_TOKENS)
+        total_input_tokens += response.usage.input_tokens
+        total_output_tokens += response.usage.output_tokens
+        payload = _extract_answer_payload(response, TRUNCATION_RETRY_MAX_TOKENS)
     except MalformedAnswerError as first_error:
         # One corrective retry, not more — a schema violation this strict output mode
         # still let through is rare (see _ANSWER_SCHEMA's docstring note); a second
@@ -288,7 +332,7 @@ def generate_answer(
         total_input_tokens += response.usage.input_tokens
         total_output_tokens += response.usage.output_tokens
         try:
-            payload = _extract_answer_payload(response)
+            payload = _extract_answer_payload(response, MAX_TOKENS)
         except MalformedAnswerError as second_error:
             raise MalformedAnswerError(
                 f"Model response for {question!r} did not parse after one corrective retry. "
