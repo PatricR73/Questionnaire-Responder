@@ -12,6 +12,7 @@ it, and overwriting it would make past baselines unreproducible.
 """
 
 import json
+import math
 import sys
 from pathlib import Path
 
@@ -35,6 +36,11 @@ BADGES = {
     "error": ("🔴", "ERROR"),
 }
 
+# 50 rows per page (P27): a 400-row run used to re-render the entire page on every
+# button click; the filter is applied before pagination so the page counts and the
+# filtered totals stay meaningful.
+PAGE_SIZE = 50
+
 st.set_page_config(page_title="Questionnaire review", layout="wide")
 
 
@@ -49,15 +55,21 @@ def get_conn():
     return db.connect()
 
 
-def load_chunk(conn, embedding_id):
-    row = conn.execute(
-        "SELECT source_filename, heading_path, text FROM chunks WHERE embedding_id = ?",
-        (embedding_id,),
-    ).fetchone()
-    return row
+def load_chunks(conn, embedding_ids: list[str]) -> dict:
+    """All cited chunks in ONE query (P27): the render loop used to call load_chunk
+    once per cited chunk per row, so a 400-row run issued on the order of two
+    thousand queries on every single rerun."""
+    if not embedding_ids:
+        return {}
+    placeholders = ",".join("?" * len(embedding_ids))
+    rows = conn.execute(
+        f"SELECT embedding_id, source_filename, heading_path, text FROM chunks WHERE embedding_id IN ({placeholders})",
+        embedding_ids,
+    ).fetchall()
+    return {r["embedding_id"]: r for r in rows}
 
 
-def render_row(conn, run_id, row):
+def render_row(conn, run_id, row, chunks_by_id: dict):
     emoji, label = BADGES.get(row["final_confidence"], ("❔", row["final_confidence"] or "UNKNOWN"))
     reviewed = bool(row["human_action"])
 
@@ -80,7 +92,7 @@ def render_row(conn, run_id, row):
         if not cited_ids:
             st.write("*(none cited)*")
         for embedding_id in cited_ids:
-            chunk = load_chunk(conn, embedding_id)
+            chunk = chunks_by_id.get(embedding_id)
             if chunk is None:
                 continue
             st.caption(f"{chunk['source_filename']} — {chunk['heading_path'] or '(no heading)'}")
@@ -220,14 +232,42 @@ def main():
     st.progress(reviewed_count / total if total else 0.0)
     st.write(f"**{reviewed_count} / {total} rows reviewed**")
 
+    # P27: load every cited chunk for the whole run in one query, before the render
+    # loop — the loop used to issue one query per cited chunk per row.
+    all_cited_ids = sorted(
+        {cid for r in rows for cid in (json.loads(r["cited_chunk_ids"]) if r["cited_chunk_ids"] else [])}
+    )
+    chunks_by_id = load_chunks(conn, all_cited_ids)
+
     filter_map = {"High": "high", "Low": "low", "Not found": "none", "Error": "error"}
     if filter_choice == "Unreviewed":
-        rows = [r for r in rows if not r["human_action"]]
+        filtered = [r for r in rows if not r["human_action"]]
     elif filter_choice in filter_map:
-        rows = [r for r in rows if r["final_confidence"] == filter_map[filter_choice]]
+        filtered = [r for r in rows if r["final_confidence"] == filter_map[filter_choice]]
+    else:
+        filtered = rows
 
-    for row in rows:
-        render_row(conn, run_id, row)
+    # Pagination after filtering, so the per-page counts reflect the active filter.
+    page_key = f"review_page_{run_id}"
+    page = st.session_state.get(page_key, 1)
+    page_count = max(1, math.ceil(len(filtered) / PAGE_SIZE))
+    page = min(max(page, 1), page_count)
+    start = (page - 1) * PAGE_SIZE
+    page_rows = filtered[start : start + PAGE_SIZE]
+
+    st.write(f"**Showing {len(filtered)} row(s)** ({start + 1}–{min(start + PAGE_SIZE, len(filtered))} on this page)")
+
+    nav_cols = st.columns(4)
+    if nav_cols[0].button("← Prev", key=f"prev_{page_key}", disabled=page <= 1):
+        st.session_state[page_key] = page - 1
+        st.rerun()
+    nav_cols[1].write(f"Page {page} / {page_count}")
+    if nav_cols[2].button("Next →", key=f"next_{page_key}", disabled=page >= page_count):
+        st.session_state[page_key] = page + 1
+        st.rerun()
+
+    for row in page_rows:
+        render_row(conn, run_id, row, chunks_by_id)
 
 
 if __name__ == "__main__":
