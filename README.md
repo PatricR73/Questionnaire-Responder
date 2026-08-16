@@ -202,6 +202,43 @@ Approve/Reject record the decision; Edit saves your corrected text separately fr
 model's original answer, so the eval-harness baselines in [`EVAL.md`](EVAL.md) stay
 reproducible against what the model actually produced.
 
+## What leaves your machine
+
+This tool's stated buyer is a B2B security team, and the first question that buyer
+asks is "where do my internal policies go." The answer, plainly:
+
+**Runs entirely locally:** document parsing, chunking, embedding, retrieval (BM25 +
+local vector index), the confidence cross-check, the workbook write-back, and the
+review UI. None of those touch the network; the embedding model is downloaded once
+and then runs on your machine.
+
+**Sent to the Anthropic API — only during `answer`:** for each question row, the
+system prompt, the question text, and the retrieved evidence passages (chunks of
+your internal policies). Nothing else: no full documents, no workbook contents
+beyond the question and the passages retrieval selected. `ingest`, `--dry-run`,
+and the review UI make no API calls at all.
+
+**Written to disk:** `out/store.db` (SQLite) holds your chunked policy text and
+every drafted answer; `out/chroma/` holds the vector index of your policy text;
+the sidecar `.jsonl` and `.log.jsonl` next to the output workbook hold drafted
+answers and per-row detail. All of it is plaintext. The API key never touches disk
+beyond an optional local `.env` file. [`.gitignore`](.gitignore) protects
+`out/`, `.env`, and `.venv/` — nothing containing your policies or answers is
+committed.
+
+**Retention:** what Anthropic does with the prompts you send is governed by
+Anthropic's current data-retention and privacy terms, which change over time —
+read them directly rather than trusting a paraphrase here:
+<https://docs.anthropic.com/en/docs/legal/data-usage>. Design for the assumption
+that the question + retrieved passages leave your perimeter during `answer`.
+
+**Review UI bind address:** `streamlit run src/review_ui.py` serves a database of
+internal security policies — bind it to localhost explicitly:
+
+```
+streamlit run src/review_ui.py --server.address=127.0.0.1
+```
+
 ## What's deliberately not built yet, and why
 
 Each of these was scoped out on purpose, not forgotten — building the core pipeline
