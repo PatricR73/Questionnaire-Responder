@@ -100,7 +100,7 @@ overturned by instrumenting instead of inferring: see **[`EVAL.md`](EVAL.md)**.
 ```
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r requirements.lock   # pinned environment; requirements.txt is the loose declaration
 pip install -e .          # optional: installs the `qresp` console command
 ```
 

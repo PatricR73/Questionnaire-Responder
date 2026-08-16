@@ -14,8 +14,19 @@ decision and its data in `fixtures/eval/TUNING_LOG.md`.
 Reproduce these numbers yourself with:
 
 ```
+pip install -r requirements.lock   # the pinned environment these numbers were measured in
 python fixtures/eval/run_eval.py
 ```
+
+**Locked environment.** `requirements.txt` declares lower bounds only — chromadb
+and sentence-transformers can change distance semantics and default model
+revisions out from under `WEAK_MATCH_DISTANCE = 0.3`. The numbers in this
+document and in `fixtures/eval/TUNING_LOG.md` were produced in the environment
+pinned by [`requirements.lock`](requirements.lock) (Python 3.14, chromadb 1.5.9,
+sentence-transformers 5.7.0) with the embedding model pinned to
+`BAAI/bge-small-en-v1.5@5c38ec7c405ec4b44b94cc5a9bb96e735b38267a`
+(`src/store/vectorstore.py`). That pin is the reproducibility path; `requirements.txt`
+stays the loose declaration.
 
 This is the actual documented command, not a summary of one — earlier runs this
 session used one-off scripts that called the model directly, bypassing the CLI

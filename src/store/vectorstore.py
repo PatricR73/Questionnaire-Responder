@@ -6,6 +6,14 @@ from src.data_dir import data_dir
 
 DEFAULT_COLLECTION = "evidence_chunks"
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
+# Pin the exact model revision: a bare model name resolves to whatever the hub
+# points at on install day, and bge-small-en-v1.5's weights can change out from
+# under WEAK_MATCH_DISTANCE = 0.3 — "reproduce these numbers yourself" stops
+# being true on a fresh install. This revision is what the deterministic eval
+# numbers in EVAL.md/TUNING_LOG.md were measured against (see the lockfile note
+# in EVAL.md). Passed through to SentenceTransformer via the embedding function's
+# model kwargs; re-derive the eval numbers if it ever has to move.
+DEFAULT_MODEL_REVISION = "5c38ec7c405ec4b44b94cc5a9bb96e735b38267a"
 
 
 class VectorStore:
@@ -25,7 +33,9 @@ class VectorStore:
 
         persist_dir.mkdir(parents=True, exist_ok=True)
         self._client = chromadb.PersistentClient(path=str(persist_dir))
-        embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(model_name=model_name)
+        embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
+            model_name=model_name, revision=DEFAULT_MODEL_REVISION
+        )
         self._collection = self._client.get_or_create_collection(name=collection_name, embedding_function=embedding_fn)
 
     def upsert(self, ids: list[str], texts: list[str], metadatas: list[dict]) -> None:
