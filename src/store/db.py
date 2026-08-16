@@ -172,18 +172,26 @@ def record_human_review(
     conn: sqlite3.Connection,
     run_id: int,
     row_index: int,
-    human_action: str,
+    human_action: str | None,
     reviewed_answer: str | None = None,
 ) -> None:
     """Record a reviewer's decision for one row. Used only by the review UI.
 
-    human_action is one of "approved" | "edited" | "rejected". reviewed_answer is
-    only ever set on "edited" — drafted_answer (the model's original output) is never
-    touched, so eval-harness scoring against it stays reproducible.
+    human_action is one of "approved" | "edited" | "rejected" — or None to append
+    an "unreviewed" event (the UI's undo). reviewed_answer is only ever set on
+    "edited" — drafted_answer (the model's original output) is never touched, so
+    eval-harness scoring against it stays reproducible.
+
+    P29: APPENDS a review event to audit_log instead of overwriting the previous
+    one. Overwriting destroyed the review trail — a misclick was unrecoverable and
+    the history a future feedback loop would want was gone. Events are marked with
+    confidence='review'; the review UI's query picks the latest event per row, so
+    the newest decision is current and any earlier one can be undone.
     """
     conn.execute(
-        "UPDATE audit_log SET human_action = ?, timestamp = ? WHERE run_id = ? AND row_index = ?",
-        (human_action, datetime.now(UTC).isoformat(), run_id, row_index),
+        "INSERT INTO audit_log (run_id, row_index, sources_consulted, confidence, provider, human_action, timestamp) "
+        "VALUES (?, ?, ?, 'review', 'review-ui', ?, ?)",
+        (run_id, row_index, json.dumps({"review_event": True}), human_action, datetime.now(UTC).isoformat()),
     )
     if reviewed_answer is not None:
         conn.execute(

@@ -131,12 +131,18 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
             st.markdown(_highlight_cited(chunk["text"], cited_sentences))
 
     row_index = row["row_index"]
-    approve_col, edit_col, reject_col = st.columns(3)
+    approve_col, edit_col, reject_col, undo_col = st.columns(4)
     if approve_col.button("Approve", key=f"approve_{row_index}"):
         db.record_human_review(conn, run_id, row_index, "approved")
         st.rerun()
     if reject_col.button("Reject", key=f"reject_{row_index}"):
         db.record_human_review(conn, run_id, row_index, "rejected")
+        st.rerun()
+    # P29: review events are appended, never overwritten, so a misclick is
+    # recoverable — this appends an "unreviewed" event that restores the row.
+    if undo_col.button("Undo review", key=f"undo_{row_index}", disabled=not reviewed):
+        db.record_human_review(conn, run_id, row_index, None)
+        st.session_state.pop(edit_key, None)
         st.rerun()
 
     edit_key = f"editing_{row_index}"
@@ -173,7 +179,15 @@ def export_reviewed_workbook(conn, run_id: int, source_path: str, output_path: s
 
     counts = {"approved": 0, "edited": 0, "rejected": 0}
     for row in rows:
+        if row["final_confidence"] == "error":
+            # Error rows are never approvable: always ship the ERROR marker,
+            # regardless of any human_action, and never the drafted text.
+            write_answer(ws, row["row_index"], column_map, "", None, "error")
+            continue
         action = row["human_action"]
+        # Unknown or None actions (unreviewed rows) are skipped, not crashed on.
+        if action not in counts:
+            continue
         counts[action] += 1
         if action == "rejected":
             # Same NOT_FOUND marker convention as everywhere else — a rejected
@@ -235,6 +249,10 @@ def main():
         else:
             st.write("*(not recorded — pre-P17 run)*")
 
+    # The latest review event per row is the current state (P29): events are
+    # appended to audit_log (confidence='review'), never overwritten, so the trail
+    # survives. Older overwritten rows (human_action set directly on the processing
+    # entry) are matched too, for databases written before the change.
     rows = conn.execute(
         """
         SELECT a.row_index, a.question_text, a.drafted_answer, a.reviewed_answer,
@@ -242,7 +260,11 @@ def main():
                a.cited_chunk_ids, a.cited_sentences,
                l.human_action, l.timestamp
         FROM answers a
-        LEFT JOIN audit_log l ON l.run_id = a.run_id AND l.row_index = a.row_index
+        LEFT JOIN audit_log l ON l.id = (
+            SELECT MAX(la.id) FROM audit_log la
+            WHERE la.run_id = a.run_id AND la.row_index = a.row_index
+              AND (la.confidence = 'review' OR la.human_action IS NOT NULL)
+        )
         WHERE a.run_id = ?
         ORDER BY a.row_index
         """,
@@ -252,9 +274,16 @@ def main():
     total = len(rows)
     reviewed_count = sum(1 for r in rows if r["human_action"])
 
-    all_reviewed = total > 0 and reviewed_count == total
+    # Error rows cannot meaningfully be approved — they are always written as
+    # ERROR_MARKER on export — so they are excluded from the gate (P29): a run with
+    # a handful of ERROR rows used to be unexportable until every one of them was
+    # 'reviewed'.
+    reviewable = [r for r in rows if r["final_confidence"] != "error"]
+    all_reviewed = len(reviewable) > 0 and reviewed_count == len(reviewable)
     export_label = (
-        "Export reviewed workbook" if all_reviewed else f"Export reviewed workbook ({reviewed_count}/{total} reviewed)"
+        "Export reviewed workbook"
+        if all_reviewed
+        else f"Export reviewed workbook ({reviewed_count}/{len(reviewable)} reviewed)"
     )
     if st.sidebar.button(export_label, disabled=not all_reviewed):
         export_path = export_reviewed_workbook(conn, run_id, run_row["source_path"], run_row["output_path"], rows)
