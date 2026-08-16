@@ -11,13 +11,14 @@ Plus the review-trail fix: record_human_review appends events rather than
 overwriting, so a misclick is undoable.
 """
 
+import pathlib
+
 import openpyxl
 
 from src.questionnaire.write_xlsx import ERROR_MARKER, NOT_FOUND_MARKER
 from src.review_ui import export_reviewed_workbook
 from src.store import db
 
-import pathlib
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures"
 SAMPLE = FIXTURES / "questionnaire_sample.xlsx"
 
@@ -37,13 +38,23 @@ def _seed_run(tmp_path):
     ]
     for row_index, action, confidence, drafted, reviewed in rows:
         db.record_answer(
-            conn, run_id, row_index, f"Q{row_index}", f"Q{row_index}",
-            drafted, None, confidence if confidence != "error" else None,
-            confidence, ["doc.md::0"],
+            conn,
+            run_id,
+            row_index,
+            f"Q{row_index}",
+            f"Q{row_index}",
+            drafted,
+            None,
+            confidence if confidence != "error" else None,
+            confidence,
+            ["doc.md::0"],
         )
         if action is not None:
             db.record_human_review(
-                conn, run_id, row_index, action,
+                conn,
+                run_id,
+                row_index,
+                action,
                 reviewed_answer=reviewed if action == "edited" else None,
             )
     return conn, run_id

@@ -100,9 +100,18 @@ def test_review_ui_shows_polarity_downgrade_and_cited_sentences(tmp_path, monkey
     )
     conn.commit()
     db.record_answer(
-        conn, run_id, 2, "Question one?", "Question one?",
-        "Drafted answer text", None, "high", "low",
-        ["doc.md::0"], polarity="partial", cited_sentences=["All traffic is encrypted in transit using TLS 1.2."],
+        conn,
+        run_id,
+        2,
+        "Question one?",
+        "Question one?",
+        "Drafted answer text",
+        None,
+        "high",
+        "low",
+        ["doc.md::0"],
+        polarity="partial",
+        cited_sentences=["All traffic is encrypted in transit using TLS 1.2."],
     )
     conn.close()
 
