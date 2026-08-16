@@ -139,6 +139,99 @@ def ingest(evidence_dir: Path):
     click.echo(f"Ingested {n} chunks.")
 
 
+def _aggregate_sub_results(sub_results):
+    """Combine per-sub-question results into ONE row-level result (B3).
+
+    The compound-question loop used to process every sub-question but let the LAST
+    one win the cell while inserting one answers/audit row per sub-question — the
+    review UI's LEFT JOIN fanned out and the progress bar double-counted. Contract:
+    answer each part, then combine into exactly one row-level result before any
+    write. Answer texts join with their sub-question as a lead-in (single-part
+    rows keep the part's verbatim answer, so the pass-through is bit-identical to
+    the pre-loop behaviour), cited chunks/sentences are unioned, confidence is the
+    WEAKEST across parts (a row is only as trustworthy as its worst-supported
+    part), polarity is "partial" on any disagreement, and the per-part detail rides
+    in the row's structured log and answers row. Exactly one cell, one answers row,
+    one audit entry, one count per sheet row.
+    """
+    parts = []
+    cited_ids = set()
+    cited_sentences = []
+    sources = []
+    all_evidence = []
+    polarities = set()
+    confidences = []
+    vocab_set = set()
+    sub_detail = []
+    in_tok = out_tok = cache_read = cache_creation = entail_in = entail_out = 0
+    for sub_question, result, evidence in sub_results:
+        all_evidence.extend(evidence)
+        sources.extend(f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence)
+        in_tok += result.input_tokens
+        out_tok += result.output_tokens
+        cache_read += result.cache_read_input_tokens
+        cache_creation += result.cache_creation_input_tokens
+        entail_in += result.entailment_input_tokens
+        entail_out += result.entailment_output_tokens
+        polarities.add(result.polarity)
+        cited_ids.update(result.cited_chunk_ids)
+        cited_sentences.extend(result.cited_sentences)
+        if result.vocab_selection is not None:
+            vocab_set.add(result.vocab_selection)
+        if result.status == AnswerStatus.NOT_FOUND:
+            confidences.append("none")
+            parts.append(f"{sub_question}: (no supporting evidence found)")
+        elif result.status == AnswerStatus.ANSWERED:
+            confidences.append(result.confidence or "low")
+            parts.append(f"{sub_question}: {result.answer}")
+        else:
+            confidences.append("error")
+            parts.append(f"{sub_question}: (processing error)")
+        sub_detail.append(
+            {
+                "text": sub_question,
+                "confidence": confidences[-1],
+                "answer": result.answer,
+                "polarity": result.polarity,
+            }
+        )
+    weakest = (
+        "none" if "none" in confidences else ("low" if "low" in confidences else "high" if confidences else "none")
+    )
+    non_null_polarities = {p for p in polarities if p is not None}
+    if len(non_null_polarities) > 1:
+        polarity = "partial"
+    elif len(non_null_polarities) == 1:
+        polarity = next(iter(non_null_polarities))
+    else:
+        polarity = None
+    # Single-part rows (the pass-through) keep the part's verbatim answer and
+    # confidence exactly as before; the lead-in join is only for multi-part rows.
+    if len(sub_results) == 1:
+        answer_text = sub_results[0][1].answer
+    else:
+        answer_text = chr(10).join(chr(10) + p for p in parts) if parts else ""
+    return {
+        "answer_text": answer_text,
+        "final_confidence": weakest,
+        "self_confidence": weakest if weakest != "none" else None,
+        "polarity": polarity if weakest != "none" else None,
+        "vocab_selection": next(iter(vocab_set)) if len(vocab_set) == 1 else None,
+        "cited_chunk_ids": sorted(cited_ids),
+        "cited_sentences": cited_sentences,
+        "sources": sources,
+        "evidence": all_evidence,
+        "sub_question_text": chr(10).join(s for s, _, _ in sub_results),
+        "sub_questions": sub_detail,
+        "input_tokens": in_tok,
+        "output_tokens": out_tok,
+        "cache_read_input_tokens": cache_read,
+        "cache_creation_input_tokens": cache_creation,
+        "entailment_input_tokens": entail_in,
+        "entailment_output_tokens": entail_out,
+    }
+
+
 def _add_stub_banner(ws, last_col: int) -> None:
     banner_row = ws.max_row + 1
     ws.merge_cells(start_row=banner_row, start_column=1, end_row=banner_row, end_column=last_col)
@@ -304,171 +397,177 @@ def answer(
         with open(jsonl_path, "a") as jsonl_file:
             for i, q in enumerate(questions, start=1):
                 start = time.monotonic()
-                # split_question is a documented pass-through today (one element), but taking
-                # [0] silently discarded every sub-question after the first - a live bug the
-                # moment a real splitter lands (v2 priority #2). Loop over the sub-questions
-                # so each one gets a full retrieve/generate/record cycle; with the
-                # pass-through this is exactly one iteration, bit-identical to before.
-                for sub_question in split_question(q.question_text):
-                    try:
+                # B3 aggregation contract: split_question is a pass-through today,
+                # but the loop must be written for the day it isn't. Each
+                # sub-question gets a full retrieve/generate cycle, then the parts
+                # are combined into ONE row-level result before any write — one
+                # cell, one answers row, one audit entry, one count per sheet row.
+                sub_results = []
+                try:
+                    for sub_question in split_question(q.question_text):
+                        # B1: evidence must be bound BEFORE search — if search
+                        # raises on the first row, the error handler below would
+                        # die with NameError while logging the failure; on any
+                        # later row it would hold stale chunks from the previous
+                        # row and record the wrong retrieval results.
+                        evidence = []
                         evidence = searcher.search(sub_question, top_k=cfg.top_k)
                         result = answerer.answer_question(
                             sub_question, evidence, column_map.vocab_values, row_index=q.row_index
                         )
-
-                        if result.status == AnswerStatus.NOT_FOUND:
-                            final_confidence = "none"
-                        elif result.status == AnswerStatus.ANSWERED:
-                            final_confidence = result.confidence  # "high" or "low"
-                        else:
-                            final_confidence = "error"  # Answerers never return ERROR themselves; kept for completeness
-
-                        answer_text = result.answer
-                        vocab_selection = result.vocab_selection
-                        self_confidence = result.confidence
-                        polarity = result.polarity
-                        cited_chunk_ids = result.cited_chunk_ids
-                        cited_sentences = result.cited_sentences
-                        sources = [
-                            f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence
-                        ]
-                        error_message = None
+                        sub_results.append((sub_question, result, evidence))
                         total_input_tokens += result.input_tokens
                         total_output_tokens += result.output_tokens
                         total_cache_read_tokens += result.cache_read_input_tokens
                         total_cache_creation_tokens += result.cache_creation_input_tokens
                         total_entailment_input_tokens += result.entailment_input_tokens
                         total_entailment_output_tokens += result.entailment_output_tokens
-                    except FATAL_ERRORS as exc:
-                        # Wrong key, wrong model, or a schema-rejecting request: the same
-                        # failure for every remaining row. Abort now (finally saves
-                        # everything processed so far) instead of failing 400 rows one at
-                        # a time after a full retry ladder each.
-                        click.echo(f"  row {q.row_index}: FATAL — {type(exc).__name__}: {exc}")
+                except FATAL_ERRORS as exc:
+                    # Wrong key, wrong model, or a schema-rejecting request: the same
+                    # failure for every remaining row. Abort now (finally saves
+                    # everything processed so far) instead of failing 400 rows one at
+                    # a time after a full retry ladder each.
+                    click.echo(f"  row {q.row_index}: FATAL — {type(exc).__name__}: {exc}")
+                    raise click.ClickException(
+                        f"Run aborted on row {q.row_index}: {type(exc).__name__} — this error will "
+                        f"repeat for every row (check the API key, model name, and request schema). "
+                        f"Everything processed so far is saved to {output}."
+                    ) from exc
+                except Exception as exc:
+                    consecutive_errors += 1
+                    caught_exc = exc
+                    # A row that burned API calls and then raised used to report zero
+                    # tokens. generate_answer attaches the real usage to the exception
+                    # (see generate.record_usage), so the run summary reflects money
+                    # actually spent even on failed rows.
+                    row_usage = getattr(exc, "_row_usage", None)
+                    if row_usage:
+                        total_input_tokens += row_usage["input_tokens"]
+                        total_output_tokens += row_usage["output_tokens"]
+                        total_cache_read_tokens += row_usage["cache_read_input_tokens"]
+                        total_cache_creation_tokens += row_usage["cache_creation_input_tokens"]
+                    if consecutive_errors >= CONSECUTIVE_ERROR_LIMIT:
+                        click.echo(f"  row {q.row_index}: ERROR — {exc}")
                         raise click.ClickException(
-                            f"Run aborted on row {q.row_index}: {type(exc).__name__} — this error will "
-                            f"repeat for every row (check the API key, model name, and request schema). "
+                            f"Run aborted after {CONSECUTIVE_ERROR_LIMIT} consecutive per-row errors "
+                            f"(circuit breaker) — the failure is systemic, not per-row. Last error: {exc}. "
                             f"Everything processed so far is saved to {output}."
                         ) from exc
-                    except Exception as exc:
-                        consecutive_errors += 1
-                        caught_exc = exc
-                        # A row that burned API calls and then raised used to report zero
-                        # tokens. generate_answer attaches the real usage to the exception
-                        # (see generate.record_usage), so the run summary reflects money
-                        # actually spent even on failed rows.
-                        row_usage = getattr(exc, "_row_usage", None)
-                        if row_usage:
-                            total_input_tokens += row_usage["input_tokens"]
-                            total_output_tokens += row_usage["output_tokens"]
-                            total_cache_read_tokens += row_usage["cache_read_input_tokens"]
-                            total_cache_creation_tokens += row_usage["cache_creation_input_tokens"]
-                        if consecutive_errors >= CONSECUTIVE_ERROR_LIMIT:
-                            click.echo(f"  row {q.row_index}: ERROR — {exc}")
-                            raise click.ClickException(
-                                f"Run aborted after {CONSECUTIVE_ERROR_LIMIT} consecutive per-row errors "
-                                f"(circuit breaker) — the failure is systemic, not per-row. Last error: {exc}. "
-                                f"Everything processed so far is saved to {output}."
-                            ) from exc
-                        final_confidence = "error"
-                        cited_chunk_ids = []
-                        cited_sentences = []
-                        sources = []
-                        answer_text = None
-                        vocab_selection = None
-                        self_confidence = None
-                        polarity = None
-                        sub_question = q.question_text
-                        error_message = str(exc)
-                        click.echo(f"  row {q.row_index}: ERROR — {error_message}")
-                    else:
-                        consecutive_errors = 0
+                    final_confidence = "error"
+                    cited_chunk_ids = []
+                    cited_sentences = []
+                    sources = []
+                    evidence = []
+                    answer_text = None
+                    vocab_selection = None
+                    self_confidence = None
+                    polarity = None
+                    sub_question_text = q.question_text
+                    in_tokens = (row_usage or {}).get("input_tokens")
+                    out_tokens = (row_usage or {}).get("output_tokens")
+                    entail_in = entail_out = 0
+                    sub_detail = []
+                    error_message = str(exc)
+                    click.echo(f"  row {q.row_index}: ERROR — {error_message}")
+                else:
+                    consecutive_errors = 0
+                    agg = _aggregate_sub_results(sub_results)
+                    final_confidence = agg["final_confidence"]
+                    answer_text = agg["answer_text"]
+                    vocab_selection = agg["vocab_selection"]
+                    self_confidence = agg["self_confidence"]
+                    polarity = agg["polarity"]
+                    cited_chunk_ids = agg["cited_chunk_ids"]
+                    cited_sentences = agg["cited_sentences"]
+                    sources = agg["sources"]
+                    evidence = agg["evidence"]
+                    sub_question_text = agg["sub_question_text"]
+                    in_tokens = agg["input_tokens"]
+                    out_tokens = agg["output_tokens"]
+                    entail_in = agg["entailment_input_tokens"]
+                    entail_out = agg["entailment_output_tokens"]
+                    sub_detail = agg["sub_questions"]
+                    error_message = None
 
-                    elapsed = time.monotonic() - start
+                elapsed = time.monotonic() - start
 
-                    if error_message is None:
-                        in_tokens = result.input_tokens
-                        out_tokens = result.output_tokens
-                    else:
-                        in_tokens = (row_usage or {}).get("input_tokens")
-                        out_tokens = (row_usage or {}).get("output_tokens")
-                    row_data = {
-                        "row_index": q.row_index,
-                        "final_confidence": final_confidence,
-                        "polarity": polarity,
-                        "provider": provider,
-                        "elapsed_seconds": round(elapsed, 3),
-                        "retrieval": [
-                            {
-                                "embedding_id": c.embedding_id,
-                                "combined_score": round(c.combined_score, 4),
-                                "distance": c.vector_distance,
-                            }
-                            for c in evidence
-                        ],
-                        "input_tokens": in_tokens,
-                        "output_tokens": out_tokens,
-                        "entailment_input_tokens": (result.entailment_input_tokens if error_message is None else 0),
-                        "entailment_output_tokens": (result.entailment_output_tokens if error_message is None else 0),
-                        "error": error_message,
-                    }
-                    if error_message is None:
-                        log.debug(
-                            "row %s: %s (%.1fs)", q.row_index, final_confidence, elapsed, extra={"row_data": row_data}
-                        )
-                    else:
-                        log.error(
-                            "row %s: ERROR — %s",
-                            q.row_index,
-                            error_message,
-                            exc_info=(type(caught_exc), caught_exc, caught_exc.__traceback__) if caught_exc else True,
-                            extra={"row_data": row_data},
-                        )
-                    caught_exc = None
-
-                    write_answer(ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence)
-                    db.record_answer(
-                        conn,
-                        run_id,
+                row_data = {
+                    "row_index": q.row_index,
+                    "final_confidence": final_confidence,
+                    "polarity": polarity,
+                    "provider": provider,
+                    "elapsed_seconds": round(elapsed, 3),
+                    "retrieval": [
+                        {
+                            "embedding_id": c.embedding_id,
+                            "combined_score": round(c.combined_score, 4),
+                            "distance": c.vector_distance,
+                        }
+                        for c in evidence
+                    ],
+                    "sub_questions": sub_detail,
+                    "input_tokens": in_tokens,
+                    "output_tokens": out_tokens,
+                    "entailment_input_tokens": entail_in,
+                    "entailment_output_tokens": entail_out,
+                    "error": error_message,
+                }
+                if error_message is None:
+                    log.debug(
+                        "row %s: %s (%.1fs)", q.row_index, final_confidence, elapsed, extra={"row_data": row_data}
+                    )
+                else:
+                    log.error(
+                        "row %s: ERROR — %s",
                         q.row_index,
-                        q.question_text,
-                        sub_question,
-                        answer_text,
-                        vocab_selection,
-                        self_confidence,
-                        final_confidence,
-                        cited_chunk_ids,
-                        polarity=polarity,
-                        cited_sentences=cited_sentences,
+                        error_message,
+                        exc_info=(type(caught_exc), caught_exc, caught_exc.__traceback__) if caught_exc else True,
+                        extra={"row_data": row_data},
                     )
-                    db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
+                caught_exc = None
 
-                    jsonl_file.write(
-                        json.dumps(
-                            {
-                                # run_id + timestamp on every record: the sidecar opens in append
-                                # mode, and without them two runs to the same --output interleave
-                                # into one file with no way to separate them (P20).
-                                "run_id": run_id,
-                                "ts": datetime.now(UTC).isoformat(),
-                                "row_index": q.row_index,
-                                "question_text": q.question_text,
-                                "final_confidence": final_confidence,
-                                "polarity": polarity,
-                                "provider": provider,
-                                "answer": answer_text,
-                                "error": error_message,
-                                "elapsed_seconds": round(elapsed, 2),
-                            }
-                        )
-                        + "\n"
+                write_answer(ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence)
+                db.record_answer(
+                    conn,
+                    run_id,
+                    q.row_index,
+                    q.question_text,
+                    sub_question_text,
+                    answer_text,
+                    vocab_selection,
+                    self_confidence,
+                    final_confidence,
+                    cited_chunk_ids,
+                    polarity=polarity,
+                    cited_sentences=cited_sentences,
+                )
+                db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
+
+                jsonl_file.write(
+                    json.dumps(
+                        {
+                            # run_id + timestamp on every record: the sidecar opens in append
+                            # mode, and without them two runs to the same --output interleave
+                            # into one file with no way to separate them (P20).
+                            "run_id": run_id,
+                            "ts": datetime.now(UTC).isoformat(),
+                            "row_index": q.row_index,
+                            "question_text": q.question_text,
+                            "final_confidence": final_confidence,
+                            "polarity": polarity,
+                            "provider": provider,
+                            "answer": answer_text,
+                            "error": error_message,
+                            "elapsed_seconds": round(elapsed, 2),
+                        }
                     )
-                    jsonl_file.flush()
+                    + "\n"
+                )
+                jsonl_file.flush()
 
-                    counts[final_confidence] += 1
-                    if error_message is None:
-                        click.echo(f"  row {q.row_index}: {final_confidence} ({elapsed:.1f}s)")
-
+                counts[final_confidence] += 1
+                if error_message is None:
+                    click.echo(f"  row {q.row_index}: {final_confidence} ({elapsed:.1f}s)")
                 if i % SAVE_EVERY_N_ROWS == 0:
                     workbook.save(output)
     finally:
@@ -491,10 +590,16 @@ def answer(
     )
     if provider == "anthropic" and (total_input_tokens or total_output_tokens):
         uncached_input = total_input_tokens - total_cache_read_tokens
-        click.echo(
-            f"Tokens: {total_input_tokens} in / {total_output_tokens} out "
+        # B2: per-question averages only make sense when something was answered —
+        # a run where every row came back NOT_FOUND still spends real tokens on
+        # every row, and that is precisely the run whose cost you want to see, so
+        # the totals print regardless and only the averages are guarded.
+        avg_line = (
             f"(avg {total_input_tokens // n_answered} in / {total_output_tokens // n_answered} out per answered question)"
+            if n_answered > 0
+            else "(no answered questions)"
         )
+        click.echo(f"Tokens: {total_input_tokens} in / {total_output_tokens} out {avg_line}")
         click.echo(
             f"  of which {uncached_input} uncached in, {total_cache_read_tokens} cache-read in, "
             f"{total_cache_creation_tokens} cache-created in"
