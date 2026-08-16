@@ -47,7 +47,19 @@ class HybridSearcher:
             return []
 
         bm25_scores = self._bm25.get_scores(_tokenize(query))
-        bm25_ranked = [self._ids[i] for i in sorted(range(len(self._ids)), key=lambda i: -bm25_scores[i])[:CANDIDATE_POOL]]
+        # Filter zero-score BM25 candidates out BEFORE fusion. A chunk with no query
+        # term overlap at all scores exactly 0.0; taking it into the candidate pool
+        # gave it real reciprocal-rank credit purely from its sort position (BM25
+        # sorts every chunk, zeros included, so with a pool larger than the number of
+        # positive-scoring chunks, zero-overlap chunks filled the tail and earned
+        # 1/(RRF_K + rank + 1) for nothing), which pushed genuine vector hits down the
+        # fused list. That is precisely the failure the VECTOR_WEIGHT = 2.0 comment
+        # below reweights around — filtering removes the symptom at its source: a
+        # zero-overlap chunk still gets its vector credit, but no longer a BM25 credit
+        # for a match it didn't make.
+        scored = [(score, cid) for score, cid in zip(bm25_scores, self._ids) if score > 0]
+        scored.sort(key=lambda pair: -pair[0])
+        bm25_ranked = [cid for _, cid in scored[:CANDIDATE_POOL]]
 
         vector_hits = self._vector_store.query(query, top_k=CANDIDATE_POOL)
         vector_ranked = [hit["id"] for hit in vector_hits]
