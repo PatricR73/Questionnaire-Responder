@@ -125,6 +125,9 @@ def test_fatal_error_aborts_the_run_immediately(monkeypatch, tmp_path):
     class AlwaysBad(StubAnswerer):
         provider_name = "anthropic"
 
+        def __init__(self, config=None, **kwargs):
+            super().__init__(**kwargs)
+
         def answer_question(self, *a, **k):
             raise _bad_request_error()
 

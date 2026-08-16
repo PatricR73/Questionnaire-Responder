@@ -33,6 +33,7 @@ whether the answer step needs batching/caching before a 200-400 question run.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
+from src.answer import generate as generate_module
 from src.answer.confidence import GroundedConfidence, WEAK_MATCH_DISTANCE, cross_check_confidence
 from src.answer.generate import generate_answer
 from src.retrieval.hybrid_search import RetrievedChunk
@@ -82,9 +83,18 @@ class Answerer(ABC):
 
 
 class AnthropicAnswerer(Answerer):
-    """Existing Claude-backed behavior: generate_answer + cross_check_confidence, unchanged."""
+    """Existing Claude-backed behavior: generate_answer + cross_check_confidence, unchanged.
+
+    Accepts an optional resolved Config (P18) whose model/max_tokens/
+    weak_match_distance override the module-constant defaults — that is how a
+    tuning sweep threads values through without a source edit."""
 
     provider_name = "anthropic"
+
+    def __init__(self, config=None):
+        self._model = getattr(config, "model", None)
+        self._max_tokens = getattr(config, "max_tokens", None)
+        self._weak_match_distance = getattr(config, "weak_match_distance", None)
 
     def answer_question(
         self,
@@ -93,8 +103,15 @@ class AnthropicAnswerer(Answerer):
         vocab_values: list[str] | None = None,
         row_index: int | None = None,
     ) -> AnswerResult:
-        draft = generate_answer(question, chunks, vocab_values)
-        final_confidence = cross_check_confidence(draft, chunks)
+        draft = generate_answer(
+            question, chunks, vocab_values,
+            model=self._model or generate_module.MODEL,
+            max_tokens=self._max_tokens or generate_module.MAX_TOKENS,
+        )
+        final_confidence = cross_check_confidence(
+            draft, chunks,
+            weak_match_distance=self._weak_match_distance or WEAK_MATCH_DISTANCE,
+        )
         # Only chunks whose text actually contained a cited sentence count as cited —
         # recording every retrieved chunk here is what made the review UI display all
         # 5 passages under "Cited evidence" and is what a future "distance of the
@@ -156,8 +173,9 @@ class StubAnswerer(Answerer):
 
     provider_name = "stub"
 
-    def __init__(self, fail_row: int | None = None):
+    def __init__(self, fail_row: int | None = None, weak_match_distance: float = WEAK_MATCH_DISTANCE):
         self.fail_row = fail_row
+        self._weak_match_distance = weak_match_distance
 
     def answer_question(
         self,
@@ -173,7 +191,7 @@ class StubAnswerer(Answerer):
         best_chunk = min(chunks, key=lambda c: c.vector_distance if c.vector_distance is not None else float("inf"), default=None)
         best_distance = min(distances) if distances else None
 
-        if best_distance is not None and best_distance <= WEAK_MATCH_DISTANCE:
+        if best_distance is not None and best_distance <= self._weak_match_distance:
             answer = f"[STUB] Per {best_chunk.source_filename} — {best_chunk.heading_path or '(no heading)'}: {best_chunk.text[:200]}"
             return AnswerResult(
                 answer=answer,

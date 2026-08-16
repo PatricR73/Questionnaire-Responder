@@ -107,13 +107,22 @@ def _add_stub_banner(ws, last_col: int) -> None:
 @click.option("--provider", type=click.Choice(["anthropic", "stub"]), default="anthropic", show_default=True)
 @click.option("--stub-fail-row", type=int, default=None, help="With --provider stub, make that row raise, to exercise per-row error isolation.")
 @click.option("--dry-run", is_flag=True, help="Estimate what a run will cost before starting it: column detection, question reading, and retrieval for every selected row, then real (local) token counts and an estimated price. Makes zero API calls, writes no workbook, and creates no run row.")
-def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, provider: str, stub_fail_row: int | None, dry_run: bool):
+@click.option("--config", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help="TOML file of tuning knobs (see src/config.py). Precedence: CLI flags > QRESP_* env vars > this file > defaults.")
+@click.option("--top-k", type=int, default=None, help="Retrieved chunks per question (highest-precedence override of the config's top_k).")
+def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, provider: str, stub_fail_row: int | None, dry_run: bool, config: Path | None, top_k: int | None):
+    from src.config import load_config
+
+    cli_overrides = {}
+    if top_k is not None:
+        cli_overrides["top_k"] = top_k
+    cfg = load_config(config_file=config, cli_overrides=cli_overrides)
+
     if provider == "anthropic" and not dry_run:
         if not os.environ.get("ANTHROPIC_API_KEY"):
             raise click.ClickException("ANTHROPIC_API_KEY not set — export it before running with --provider anthropic (every row would fail identically). Use --provider stub if you want to test without a key.")
-        answerer = AnthropicAnswerer()
+        answerer = AnthropicAnswerer(config=cfg)
     else:
-        answerer = StubAnswerer(fail_row=stub_fail_row)
+        answerer = StubAnswerer(fail_row=stub_fail_row, weak_match_distance=cfg.weak_match_distance)
 
     workbook = openpyxl.load_workbook(questionnaire)
     ws = workbook.active
@@ -136,9 +145,14 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
         _add_stub_banner(ws, last_col=max(column_map.question_col, column_map.answer_col, column_map.vocab_col or 0))
 
     conn = db.connect()
-    vector_store = VectorStore()
-    searcher = HybridSearcher(conn, vector_store)
-    run_config = _current_run_config(top_k=5)
+    vector_store = VectorStore(model_name=cfg.embedding_model)
+    searcher = HybridSearcher(
+        conn, vector_store,
+        vector_weight=cfg.vector_weight,
+        rrf_k=cfg.rrf_k,
+        candidate_pool=cfg.candidate_pool,
+    )
+    run_config = _current_run_config(cfg)
     click.echo(f"Config: {_config_fingerprint(run_config)}")
     run_id = db.start_questionnaire_run(conn, str(questionnaire), str(output), run_config=run_config)
 
@@ -158,7 +172,7 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                 start = time.monotonic()
                 try:
                     sub_question = split_question(q.question_text)[0]
-                    evidence = searcher.search(sub_question, top_k=5)
+                    evidence = searcher.search(sub_question, top_k=cfg.top_k)
                     result = answerer.answer_question(sub_question, evidence, column_map.vocab_values, row_index=q.row_index)
 
                     if result.status == AnswerStatus.NOT_FOUND:
@@ -326,21 +340,15 @@ def _dry_run_cost_estimate(questions: list, all_questions: list, column_map) -> 
     click.echo("  estimated cost: $" + f"{cost:.4f}" + " (placeholder Sonnet-class pricing; see _estimate_cost)")
 
 
-def _current_run_config(top_k: int = 5) -> dict:
-    """Snapshot of the configuration that produced this run, for the run_config
-    column and the start-of-run fingerprint.
+def _current_run_config(cfg) -> dict:
+    """Snapshot of the resolved configuration that produced this run, for the
+    run_config column and the start-of-run fingerprint.
 
-    Every value that affects answers: model, token limit, the confidence threshold,
-    the fusion constants, the retrieval pool sizes, the chunking bounds, the
-    embedding model — plus the git revision and a dirty-tree flag, so a past run in
+    Serializes the P18 Config (all answer-affecting values: model, token limit,
+    confidence threshold, fusion constants, pool sizes, chunk bounds, embedding
+    model) plus the git revision and a dirty-tree flag, so a past run in
     out/store.db can always be tied back to the exact code+config that produced it."""
     import subprocess
-
-    from src.answer import generate
-    from src.answer.confidence import WEAK_MATCH_DISTANCE
-    from src.ingest import chunk
-    from src.retrieval import hybrid_search
-    from src.store.vectorstore import DEFAULT_MODEL
 
     repo_root = Path(__file__).resolve().parent.parent
     git_sha = None
@@ -353,21 +361,10 @@ def _current_run_config(top_k: int = 5) -> dict:
     except Exception:  # noqa: BLE001 — not in a git repo or git unavailable: record the gap, don't crash
         pass
 
-    return {
-        "model": generate.MODEL,
-        "max_tokens": generate.MAX_TOKENS,
-        "weak_match_distance": WEAK_MATCH_DISTANCE,
-        "vector_weight": hybrid_search.VECTOR_WEIGHT,
-        "rrf_k": hybrid_search.RRF_K,
-        "candidate_pool": hybrid_search.CANDIDATE_POOL,
-        "top_k": top_k,
-        "max_chunk_chars": chunk.MAX_CHUNK_CHARS,
-        "min_chunk_chars": chunk.MIN_CHUNK_CHARS,
-        "overlap_sentences": chunk.OVERLAP_SENTENCES,
-        "embedding_model": DEFAULT_MODEL,
-        "git_sha": git_sha,
-        "git_dirty": git_dirty,
-    }
+    snapshot = cfg.as_dict()
+    snapshot["git_sha"] = git_sha
+    snapshot["git_dirty"] = git_dirty
+    return snapshot
 
 
 def _config_fingerprint(cfg: dict) -> str:

@@ -88,13 +88,15 @@ _POLARITY_INVERSIONS = {"affirms": "denies", "denies": "affirms"}
 _WILSON_Z = 1.959963984540054
 
 
-def run_pipeline(output_path: Path) -> None:
+def run_pipeline(output_path: Path, config_file: Path | None = None) -> None:
     cmd = [
         sys.executable, "-m", "src.pipeline", "answer",
         "--questionnaire", str(QUESTIONNAIRE),
         "--output", str(output_path),
         "--limit", "0",
     ]
+    if config_file is not None:
+        cmd += ["--config", str(config_file)]
     print(f"Running: {' '.join(cmd)}")
     result = subprocess.run(cmd, cwd=REPO_ROOT)
     if result.returncode != 0:
@@ -237,6 +239,13 @@ def main():
         help="Run the pipeline N times into distinct output paths and report per-question "
         "stability plus min/mean/max structural match across runs (default 1).",
     )
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="TOML file of tuning knobs passed through to the pipeline (see src/config.py) "
+        "so a sweep is a loop over config files instead of a series of source edits.",
+    )
     args = parser.parse_args()
     repeats = args.repeats
     if repeats < 1:
@@ -254,7 +263,7 @@ def main():
 
     for i, output_path in enumerate(outputs, start=1):
         print(f"\n=== Repeat {i}/{repeats} (output: {output_path.name}) ===")
-        run_pipeline(output_path)
+        run_pipeline(output_path, config_file=args.config)
         rows = load_run_rows(output_path)
         matches, not_found_regressions, polarity_inversions = score_run(rows)
         per_run_rows.append(rows)

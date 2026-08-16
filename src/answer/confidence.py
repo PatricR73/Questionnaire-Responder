@@ -54,7 +54,11 @@ class GroundedConfidence(str):
         return obj
 
 
-def cross_check_confidence(draft: AnswerDraft, evidence_chunks: list[RetrievedChunk]) -> str:
+def cross_check_confidence(
+    draft: AnswerDraft,
+    evidence_chunks: list[RetrievedChunk],
+    weak_match_distance: float = WEAK_MATCH_DISTANCE,
+) -> str:
     """Returns a GroundedConfidence: the confidence string plus which chunks grounded it.
 
     The confidence rules are unchanged (see the module docstring). The cited ids are
@@ -65,6 +69,10 @@ def cross_check_confidence(draft: AnswerDraft, evidence_chunks: list[RetrievedCh
     everything retrieved. When the answer is not grounded the returned set is empty
     (or partial — it still reports whatever grounded; callers on the "none" path
     record no citations regardless).
+
+    weak_match_distance defaults to the WEAK_MATCH_DISTANCE module constant (P18
+    passes the resolved Config value through); the constant keeps its long comment
+    about being an unvalidated placeholder — do not tune it by hand.
     """
     if not draft.supported or draft.self_confidence == "none":
         return GroundedConfidence("none", cited_ids=frozenset())
@@ -101,7 +109,7 @@ def cross_check_confidence(draft: AnswerDraft, evidence_chunks: list[RetrievedCh
 
     distances = [c.vector_distance for c in evidence_chunks if c.vector_distance is not None]
     best_distance = min(distances) if distances else None
-    weak_retrieval = best_distance is not None and best_distance > WEAK_MATCH_DISTANCE
+    weak_retrieval = best_distance is not None and best_distance > weak_match_distance
 
     if draft.self_confidence == "high":
         confidence = "low" if weak_retrieval else "high"

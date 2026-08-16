@@ -255,7 +255,13 @@ def generate_answer(
     question: str,
     evidence_chunks: list[RetrievedChunk],
     vocab_values: list[str] | None = None,
+    *,
+    model: str = MODEL,
+    max_tokens: int = MAX_TOKENS,
 ) -> AnswerDraft:
+    """Draft one answer. model/max_tokens default to the module constants (the
+    P18 Config passes its resolved values through here); the constants keep their
+    comments and stay the documented defaults."""
     if not os.environ.get("ANTHROPIC_API_KEY"):
         raise RuntimeError("ANTHROPIC_API_KEY not set — cannot call Claude to generate answers.")
 
@@ -267,7 +273,7 @@ def generate_answer(
     client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT_SECONDS, max_retries=0)
     retryable = (anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APITimeoutError, anthropic.APIConnectionError)
 
-    def create_message(user_content: str, max_tokens: int = MAX_TOKENS):
+    def create_message(user_content: str, max_tokens: int = max_tokens, model: str = model):
         """client.messages.create with the reproducibility temperature applied.
 
         See TEMPERATURE's docstring: some models reject the parameter outright. Probe
@@ -275,7 +281,7 @@ def generate_answer(
         rejected call) and omit it for models that deprecate it."""
         global _TEMPERATURE_DEPRECATED
         kwargs = {
-            "model": MODEL,
+            "model": model,
             "max_tokens": max_tokens,
             "temperature": TEMPERATURE,
             "system": _SYSTEM_BLOCKS,
@@ -310,11 +316,11 @@ def generate_answer(
         delay = RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1))
         return min(delay, RETRY_MAX_DELAY_SECONDS) + random.uniform(0, RETRY_JITTER_SECONDS)
 
-    def call(user_content: str, max_tokens: int = MAX_TOKENS):
+    def call(user_content: str, max_tokens: int = max_tokens, model: str = model):
         attempt = 0  # failures so far; the initial attempt is free
         while True:
             try:
-                return create_message(user_content, max_tokens=max_tokens)
+                return create_message(user_content, max_tokens=max_tokens, model=model)
             except retryable as exc:
                 attempt += 1
                 if attempt >= MAX_RETRIES:
@@ -347,13 +353,13 @@ def generate_answer(
         # corrective-suffix retry would use the same limit and truncate again. If
         # the higher limit also truncates, the second AnswerTruncatedError
         # propagates as the row's real diagnosis (pipeline.py records it as ERROR).
-        response = call(base_message, max_tokens=TRUNCATION_RETRY_MAX_TOKENS)
+        response = call(base_message, max_tokens=max_tokens * 2)
         total_input_tokens += response.usage.input_tokens
         total_output_tokens += response.usage.output_tokens
         total_cache_read += getattr(response.usage, "cache_read_input_tokens", 0) or 0
         total_cache_creation += getattr(response.usage, "cache_creation_input_tokens", 0) or 0
         try:
-            payload = _extract_answer_payload(response, TRUNCATION_RETRY_MAX_TOKENS)
+            payload = _extract_answer_payload(response, max_tokens * 2)
         except AnswerTruncatedError as exc:
             raise record_usage(exc)
     except MalformedAnswerError as first_error:

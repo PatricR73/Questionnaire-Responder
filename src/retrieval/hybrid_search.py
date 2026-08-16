@@ -35,7 +35,21 @@ def _tokenize(text: str) -> list[str]:
 
 
 class HybridSearcher:
-    def __init__(self, conn: sqlite3.Connection, vector_store: VectorStore):
+    def __init__(
+        self,
+        conn: sqlite3.Connection,
+        vector_store: VectorStore,
+        *,
+        vector_weight: float = VECTOR_WEIGHT,
+        rrf_k: int = RRF_K,
+        candidate_pool: int = CANDIDATE_POOL,
+    ):
+        # Tuning knobs as instance attributes (defaulting to the module constants,
+        # which keep their comments) so the P18 Config can thread resolved values
+        # through without a source edit per tuning pass.
+        self._vector_weight = vector_weight
+        self._rrf_k = rrf_k
+        self._candidate_pool = candidate_pool
         self._vector_store = vector_store
         rows = conn.execute("SELECT source_filename, heading_path, loc_ref, text, embedding_id FROM chunks").fetchall()
         self._chunks_by_id = {row["embedding_id"]: dict(row) for row in rows}
@@ -59,17 +73,17 @@ class HybridSearcher:
         # for a match it didn't make.
         scored = [(score, cid) for score, cid in zip(bm25_scores, self._ids) if score > 0]
         scored.sort(key=lambda pair: -pair[0])
-        bm25_ranked = [cid for _, cid in scored[:CANDIDATE_POOL]]
+        bm25_ranked = [cid for _, cid in scored[: self._candidate_pool]]
 
-        vector_hits = self._vector_store.query(query, top_k=CANDIDATE_POOL)
+        vector_hits = self._vector_store.query(query, top_k=self._candidate_pool)
         vector_ranked = [hit["id"] for hit in vector_hits]
         distance_by_id = {hit["id"]: hit["distance"] for hit in vector_hits}
 
         rrf_scores: dict[str, float] = {}
         for rank, cid in enumerate(bm25_ranked):
-            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (RRF_K + rank + 1)
+            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + 1.0 / (self._rrf_k + rank + 1)
         for rank, cid in enumerate(vector_ranked):
-            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + VECTOR_WEIGHT * (1.0 / (RRF_K + rank + 1))
+            rrf_scores[cid] = rrf_scores.get(cid, 0.0) + self._vector_weight * (1.0 / (self._rrf_k + rank + 1))
 
         top_ids = sorted(rrf_scores.keys(), key=lambda cid: -rrf_scores[cid])[:top_k]
 

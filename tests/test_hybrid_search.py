@@ -32,8 +32,10 @@ class FakeVectorStore:
         return [dict(h) for h in self._hits[:top_k]]
 
 
-def _make_searcher(chunks: list[tuple[str, str]], vector_hits: list[dict]) -> HybridSearcher:
-    """chunks: (embedding_id, text) pairs. vector_hits: query-ordered fake results."""
+def _make_searcher(chunks: list[tuple[str, str]], vector_hits: list[dict], **kwargs) -> HybridSearcher:
+    """chunks: (embedding_id, text) pairs. vector_hits: query-ordered fake results.
+    Extra kwargs (vector_weight, rrf_k, candidate_pool) thread through to the
+    searcher — P18 made these instance attributes rather than module constants."""
     conn = sqlite3.connect(":memory:")
     conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
@@ -43,7 +45,7 @@ def _make_searcher(chunks: list[tuple[str, str]], vector_hits: list[dict]) -> Hy
         [(text, cid) for cid, text in chunks],
     )
     conn.commit()
-    return HybridSearcher(conn, FakeVectorStore(vector_hits))
+    return HybridSearcher(conn, FakeVectorStore(vector_hits), **kwargs)
 
 
 def test_zero_score_bm25_chunk_gets_no_bm25_credit():
@@ -75,32 +77,28 @@ def test_zero_score_bm25_chunk_gets_no_bm25_credit():
     assert c.combined_score == pytest.approx(1 / (RRF_K + 2) + VECTOR_WEIGHT / (RRF_K + 3))
 
 
-def test_vector_weight_decides_a_tie_between_vector_rank1_and_bm25_rank1(monkeypatch):
+def test_vector_weight_decides_a_tie_between_vector_rank1_and_bm25_rank1():
     # Query "alpha beta". Chunk A ("alpha beta") is BM25 rank 1 / vector rank 2;
     # chunk D ("beta") is BM25 rank 2 / vector rank 1. At equal weighting the two
     # RRF sums are IDENTICAL (1/(K+1)+1/(K+2) both ways) — so which one wins is
     # exactly the decision VECTOR_WEIGHT = 2.0 makes, and the test pins that the
     # constant is load-bearing rather than cosmetic. X has zero BM25 overlap and is
     # filtered from the BM25 side (P10), keeping its vector-only credit.
-    import src.retrieval.hybrid_search as hs
+    chunks = [("c-a", "alpha beta"), ("c-d", "beta"), ("c-x", "omega omega omega")]
+    hits = [
+        {"id": "c-d", "distance": 0.05},
+        {"id": "c-a", "distance": 0.10},
+        {"id": "c-x", "distance": 0.20},
+    ]
 
-    searcher = _make_searcher(
-        [("c-a", "alpha beta"), ("c-d", "beta"), ("c-x", "omega omega omega")],
-        [
-            {"id": "c-d", "distance": 0.05},
-            {"id": "c-a", "distance": 0.10},
-            {"id": "c-x", "distance": 0.20},
-        ],
-    )
-
+    searcher = _make_searcher(chunks, hits, vector_weight=2.0)
     results = searcher.search("alpha beta", top_k=3)
     assert results[0].embedding_id == "c-d"  # vector rank 1 wins under VECTOR_WEIGHT = 2.0
     d = results[0]
     assert d.combined_score == pytest.approx(1 / (RRF_K + 2) + VECTOR_WEIGHT / (RRF_K + 1))
 
     # Under equal weighting the pair ties exactly — the constant is what breaks it.
-    monkeypatch.setattr(hs, "VECTOR_WEIGHT", 1.0)
-    tied = searcher.search("alpha beta", top_k=3)
+    tied = _make_searcher(chunks, hits, vector_weight=1.0).search("alpha beta", top_k=3)
     a = next(r for r in tied if r.embedding_id == "c-a")
     d_tied = next(r for r in tied if r.embedding_id == "c-d")
     assert a.combined_score == pytest.approx(d_tied.combined_score)
