@@ -265,12 +265,21 @@ def answer(
 
     conn = db.connect()
     vector_store = VectorStore(model_name=cfg.embedding_model)
+    reranker = None
+    if cfg.reranker:
+        from src.retrieval.reranker import CrossEncoderReranker
+
+        # Downloads BAAI/bge-reranker-base on first use (~1.1 GB, local, no API
+        # cost) — see the README setup section. One instance for the whole run.
+        click.echo("Loading reranker model (first use downloads ~1.1 GB) ...")
+        reranker = CrossEncoderReranker()
     searcher = HybridSearcher(
         conn,
         vector_store,
         vector_weight=cfg.vector_weight,
         rrf_k=cfg.rrf_k,
         candidate_pool=cfg.candidate_pool,
+        reranker=reranker,
     )
     run_config = _current_run_config(cfg)
     click.echo(f"Config: {_config_fingerprint(run_config)}")
@@ -318,7 +327,9 @@ def answer(
                         polarity = result.polarity
                         cited_chunk_ids = result.cited_chunk_ids
                         cited_sentences = result.cited_sentences
-                        sources = [f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence]
+                        sources = [
+                            f"{c.source_filename} ({c.heading_path or 'no heading'}, {c.loc_ref})" for c in evidence
+                        ]
                         error_message = None
                         total_input_tokens += result.input_tokens
                         total_output_tokens += result.output_tokens

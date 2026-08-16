@@ -28,6 +28,11 @@ class RetrievedChunk:
     text: str
     vector_distance: float | None
     combined_score: float
+    # P11: relevance score from the optional cross-encoder reranker (0-1,
+    # sigmoid of the logit). None when the reranker is off. Carried ALONGSIDE
+    # vector_distance, never overwriting it — the confidence layer may use it
+    # later, but that decision is deliberately not wired in this commit.
+    rerank_score: float | None = None
 
 
 def _tokenize(text: str) -> list[str]:
@@ -43,13 +48,18 @@ class HybridSearcher:
         vector_weight: float = VECTOR_WEIGHT,
         rrf_k: int = RRF_K,
         candidate_pool: int = CANDIDATE_POOL,
+        reranker=None,
     ):
         # Tuning knobs as instance attributes (defaulting to the module constants,
         # which keep their comments) so the P18 Config can thread resolved values
-        # through without a source edit per tuning pass.
+        # through without a source edit per tuning pass. reranker (a
+        # CrossEncoderReranker, or None) is the P11 opt-in: when set, the fused
+        # candidate pool is re-ranked by question-passage relevance before
+        # truncation to top_k, and rerank_score rides on each RetrievedChunk.
         self._vector_weight = vector_weight
         self._rrf_k = rrf_k
         self._candidate_pool = candidate_pool
+        self._reranker = reranker
         self._vector_store = vector_store
         rows = conn.execute("SELECT source_filename, heading_path, loc_ref, text, embedding_id FROM chunks").fetchall()
         self._chunks_by_id = {row["embedding_id"]: dict(row) for row in rows}
@@ -85,20 +95,39 @@ class HybridSearcher:
         for rank, cid in enumerate(vector_ranked):
             rrf_scores[cid] = rrf_scores.get(cid, 0.0) + self._vector_weight * (1.0 / (self._rrf_k + rank + 1))
 
-        top_ids = sorted(rrf_scores.keys(), key=lambda cid: -rrf_scores[cid])[:top_k]
-
-        results = []
-        for cid in top_ids:
-            chunk = self._chunks_by_id[cid]
-            results.append(
+        fused_ids = sorted(rrf_scores.keys(), key=lambda cid: -rrf_scores[cid])
+        if self._reranker is not None:
+            # P11: cross-encoder rerank the whole fused pool (both retrievers'
+            # candidates, before truncation) — the near-miss distractor problem is
+            # exactly what a bi-encoder distance cannot separate. The reranked
+            # order replaces the RRF order for the top-k truncation; combined_score
+            # still carries the RRF value for the audit log.
+            candidates = [
                 RetrievedChunk(
                     embedding_id=cid,
-                    source_filename=chunk["source_filename"],
-                    heading_path=chunk["heading_path"],
-                    loc_ref=chunk["loc_ref"],
-                    text=chunk["text"],
+                    source_filename=self._chunks_by_id[cid]["source_filename"],
+                    heading_path=self._chunks_by_id[cid]["heading_path"],
+                    loc_ref=self._chunks_by_id[cid]["loc_ref"],
+                    text=self._chunks_by_id[cid]["text"],
                     vector_distance=distance_by_id.get(cid),
                     combined_score=rrf_scores[cid],
                 )
-            )
-        return results
+                for cid in fused_ids
+            ]
+            top = self._reranker.rerank(query, candidates)[:top_k]
+        else:
+            top = []
+            for cid in fused_ids[:top_k]:
+                chunk = self._chunks_by_id[cid]
+                top.append(
+                    RetrievedChunk(
+                        embedding_id=cid,
+                        source_filename=chunk["source_filename"],
+                        heading_path=chunk["heading_path"],
+                        loc_ref=chunk["loc_ref"],
+                        text=chunk["text"],
+                        vector_distance=distance_by_id.get(cid),
+                        combined_score=rrf_scores[cid],
+                    )
+                )
+        return top

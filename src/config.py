@@ -39,6 +39,7 @@ _FIELD_NAMES = {
     "min_chunk_chars",
     "overlap_sentences",
     "embedding_model",
+    "reranker",
 }
 
 _INT_FIELDS = {
@@ -51,6 +52,7 @@ _INT_FIELDS = {
     "overlap_sentences",
 }
 _FLOAT_FIELDS = {"weak_match_distance", "vector_weight"}
+_BOOL_FIELDS = {"reranker"}
 
 _ENV_VAR = "QRESP_CONFIG"  # env var pointing at a TOML file
 
@@ -71,6 +73,9 @@ class Config:
     min_chunk_chars: int = MIN_CHUNK_CHARS
     overlap_sentences: int = OVERLAP_SENTENCES
     embedding_model: str = DEFAULT_MODEL
+    # P11: local cross-encoder reranker over the fused candidate pool, default OFF
+    # so the existing baseline stays reproducible. See src/retrieval/reranker.py.
+    reranker: bool = False
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)
@@ -81,6 +86,10 @@ def _coerce(name: str, raw: object):
         return int(raw)
     if name in _FLOAT_FIELDS:
         return float(raw)
+    if name in _BOOL_FIELDS:
+        if isinstance(raw, bool):
+            return raw
+        return str(raw).strip().lower() in ("1", "true", "yes", "on")
     return raw
 
 

@@ -99,9 +99,7 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
     confidence_line = f"{emoji} **{label}**"
     if row["self_confidence"] and row["self_confidence"] != row["final_confidence"]:
         confidence_line += f"  (model said: {row['self_confidence']})"
-    polarity_emoji, polarity_label = POLARITY_BADGES.get(
-        row["polarity"], ("", "")
-    )
+    polarity_emoji, polarity_label = POLARITY_BADGES.get(row["polarity"], ("", ""))
     if polarity_label:
         confidence_line += f"  ·  {polarity_emoji} **{polarity_label}**"
 
@@ -131,6 +129,7 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
             st.markdown(_highlight_cited(chunk["text"], cited_sentences))
 
     row_index = row["row_index"]
+    edit_key = f"editing_{row_index}"
     approve_col, edit_col, reject_col, undo_col = st.columns(4)
     if approve_col.button("Approve", key=f"approve_{row_index}"):
         db.record_human_review(conn, run_id, row_index, "approved")
@@ -144,8 +143,6 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
         db.record_human_review(conn, run_id, row_index, None)
         st.session_state.pop(edit_key, None)
         st.rerun()
-
-    edit_key = f"editing_{row_index}"
     if edit_col.button("Edit", key=f"edit_{row_index}"):
         st.session_state[edit_key] = True
     if st.session_state.get(edit_key):

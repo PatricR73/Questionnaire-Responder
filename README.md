@@ -99,6 +99,9 @@ pip install -e .          # optional: installs the `qresp` console command
 
 The first `ingest` or `answer` run downloads a local sentence-transformers embedding
 model (a few hundred MB). This can take a few minutes and looks like a hang — it isn't.
+Enabling the optional cross-encoder reranker (`QRESP_RERANKER=true` or a config
+file) downloads `BAAI/bge-reranker-base` (~1.1 GB) on first use — also local, also
+one-time, and it runs on your machine with no API cost.
 
 ## Usage
 
