@@ -33,7 +33,7 @@ whether the answer step needs batching/caching before a 200-400 question run.
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from src.answer.confidence import WEAK_MATCH_DISTANCE, cross_check_confidence
+from src.answer.confidence import GroundedConfidence, WEAK_MATCH_DISTANCE, cross_check_confidence
 from src.answer.generate import generate_answer
 from src.retrieval.hybrid_search import RetrievedChunk
 
@@ -98,6 +98,22 @@ class AnthropicAnswerer(Answerer):
         # cited.
         cited_chunk_ids = sorted(final_confidence.cited_ids)
 
+        # Vocabulary membership is enforced twice, the same way citations are: the
+        # per-request schema enum (generate.build_answer_schema) constrains decoding
+        # when a vocab list exists, and this runtime assertion backstops it. A value
+        # outside the allowed set — or any value at all when no list was provided,
+        # which rule 5 says must be null — must never reach the data-validated cell
+        # (it can trigger Excel's "we found a problem with some content" repair
+        # dialog on open). The row is downgraded to "low" rather than silently
+        # dropping the value: the answer is still real, but the vocabulary write-back
+        # failed and a reviewer needs to see that.
+        vocab_selection = draft.vocab_selection
+        allowed_vocab = vocab_values or []
+        if vocab_selection is not None and (not allowed_vocab or vocab_selection not in allowed_vocab):
+            vocab_selection = None
+            if final_confidence != "none":
+                final_confidence = GroundedConfidence("low", cited_ids=frozenset(cited_chunk_ids))
+
         if final_confidence == "none":
             return AnswerResult(
                 answer="",
@@ -116,7 +132,7 @@ class AnthropicAnswerer(Answerer):
             confidence=str(final_confidence),  # "high" or "low" (plain str — the GroundedConfidence cited-ids metadata belongs to this decision, not to consumers of the result)
             cited_chunk_ids=cited_chunk_ids,
             provider=self.provider_name,
-            vocab_selection=draft.vocab_selection,
+            vocab_selection=vocab_selection,
             polarity=draft.polarity,
             input_tokens=draft.input_tokens,
             output_tokens=draft.output_tokens,

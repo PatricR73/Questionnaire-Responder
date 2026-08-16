@@ -107,42 +107,51 @@ class AnswerDraft:
 
 REQUIRED_ANSWER_KEYS = {"supported", "answer", "cited_sentences", "vocab_selection", "self_confidence", "polarity"}
 
-# Passed via output_config for real structured-output enforcement (constrained decoding
-# against this exact schema), not merely a tool-use hint. tool_choice-forced tool calls
-# were tried first and still let the model drift out of schema under longer, more
-# hedged reasoning (observed directly: 3 of 20 real calls emitted leaked
-# "</answer>\n<parameter name=...>" text inside the answer string instead of a proper
-# cited_sentences field). output_config.format is the stronger mechanism — the API
-# rejects/reformats non-conformant output rather than merely being asked nicely for it.
-# Nullable enum fields use anyOf, not a bare "type": [...,"null"] + enum list — the
-# structured-output validator rejects the latter combination outright.
-_ANSWER_SCHEMA = {
-    "type": "object",
-    "properties": {
-        "supported": {"type": "boolean", "description": "Whether the provided evidence supports any answer at all."},
-        "answer": {"type": "string", "description": "The drafted answer text, or empty string if unsupported."},
-        "cited_sentences": {
-            "type": "array",
-            "items": {"type": "string"},
-            "description": "Verbatim sentences copied from the evidence text that support the answer.",
+
+def build_answer_schema(vocab_values: list[str] | None = None) -> dict:
+    """Structured-output schema for ONE request (passed via output_config, so the API
+    enforces it with constrained decoding rather than merely being asked nicely — see
+    the note on output_config in the commit that introduced it).
+
+    Built per request instead of as a module constant because the vocab_selection
+    branch is constrained to THIS question's actual vocabulary list: constrained
+    decoding can only enforce an enum that exists in the schema, and the allowed
+    values differ per column/workbook. With a non-empty list the enum is injected so
+    the API rejects any other value outright; without one the branch stays a
+    free-form nullable string (the model is expected to return null, per system-prompt
+    rule 5 — AnthropicAnswerer backstops that expectation at runtime). Nullable enum
+    fields use anyOf, not a bare "type": [...,"null"] + enum list — the structured-
+    output validator rejects the latter combination outright."""
+    vocab_branch: dict = {"type": "string"}
+    if vocab_values:
+        vocab_branch = {"type": "string", "enum": list(vocab_values)}
+    return {
+        "type": "object",
+        "properties": {
+            "supported": {"type": "boolean", "description": "Whether the provided evidence supports any answer at all."},
+            "answer": {"type": "string", "description": "The drafted answer text, or empty string if unsupported."},
+            "cited_sentences": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Verbatim sentences copied from the evidence text that support the answer.",
+            },
+            "vocab_selection": {
+                "anyOf": [vocab_branch, {"type": "null"}],
+                "description": "One value copied from the allowed vocabulary list, or null.",
+            },
+            "self_confidence": {
+                "type": "string",
+                "enum": ["high", "low", "none"],
+                "description": "Self-assessed confidence: 'none' if unsupported, 'low' if partial, 'high' if fully supported.",
+            },
+            "polarity": {
+                "anyOf": [{"type": "string", "enum": ["affirms", "denies", "partial"]}, {"type": "null"}],
+                "description": "Only meaningful when supported=true: 'affirms' if the evidence confirms the control/practice exists, 'denies' if the evidence explicitly states it does NOT (a documented negative — not the same as no evidence at all), 'partial' if only part of the question is addressed OR the evidence contains an unresolved contradiction (rule 8). Null when supported=false.",
+            },
         },
-        "vocab_selection": {
-            "anyOf": [{"type": "string"}, {"type": "null"}],
-            "description": "One value copied from the allowed vocabulary list, or null.",
-        },
-        "self_confidence": {
-            "type": "string",
-            "enum": ["high", "low", "none"],
-            "description": "Self-assessed confidence: 'none' if unsupported, 'low' if partial, 'high' if fully supported.",
-        },
-        "polarity": {
-            "anyOf": [{"type": "string", "enum": ["affirms", "denies", "partial"]}, {"type": "null"}],
-            "description": "Only meaningful when supported=true: 'affirms' if the evidence confirms the control/practice exists, 'denies' if the evidence explicitly states it does NOT (a documented negative — not the same as no evidence at all), 'partial' if only part of the question is addressed OR the evidence contains an unresolved contradiction (rule 8). Null when supported=false.",
-        },
-    },
-    "required": ["supported", "answer", "cited_sentences", "vocab_selection", "self_confidence", "polarity"],
-    "additionalProperties": False,
-}
+        "required": ["supported", "answer", "cited_sentences", "vocab_selection", "self_confidence", "polarity"],
+        "additionalProperties": False,
+    }
 
 _CORRECTIVE_SUFFIX = (
     "\n\n(Your previous response for this question did not parse as the required JSON object. "
@@ -212,7 +221,7 @@ def generate_answer(
             "max_tokens": 1024,
             "temperature": TEMPERATURE,
             "system": SYSTEM_PROMPT,
-            "output_config": {"format": {"type": "json_schema", "schema": _ANSWER_SCHEMA}},
+            "output_config": {"format": {"type": "json_schema", "schema": build_answer_schema(vocab_values)}},
             "messages": [{"role": "user", "content": user_content}],
         }
         if _TEMPERATURE_DEPRECATED:
