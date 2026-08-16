@@ -28,8 +28,10 @@ loop continues to the next row.
 """
 
 import json
+import logging
 import os
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 
 import anthropic
@@ -47,6 +49,52 @@ from src.store import db
 from src.store.vectorstore import VectorStore
 
 SAVE_EVERY_N_ROWS = 5
+
+log = logging.getLogger("qresp")
+
+
+class _JsonLinesFormatter(logging.Formatter):
+    """One JSON object per line, carrying the structured per-row data attached as
+    the 'row_data' LogRecord attribute plus the message, level, and traceback for
+    failed rows — the file a debugger wants to read instead of re-running a 400-row
+    sheet with --only-row and hoping a bad row reproduces."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload = {
+            "ts": datetime.now(timezone.utc).isoformat(),
+            "level": record.levelname,
+            "logger": record.name,
+            "message": record.getMessage(),
+        }
+        row_data = getattr(record, "row_data", None)
+        if row_data:
+            payload.update(row_data)
+        if record.exc_info:
+            payload["traceback"] = self.formatException(record.exc_info)
+        return json.dumps(payload)
+
+
+def _setup_logging(output: Path, verbose: bool, quiet: bool) -> None:
+    """Configure the qresp logger: human-readable progress on stderr (INFO; DEBUG
+    with --verbose; only errors with --quiet), and a JSON-lines file next to the
+    output workbook at DEBUG with every structured per-row record. The existing
+    click.echo progress lines are intentionally kept — they are the interactive UX;
+    the logger's stderr channel is the --verbose/--quiet-controlled complement, and
+    the file is the structured record."""
+    log.setLevel(logging.DEBUG)
+    log.handlers.clear()
+    log.propagate = False
+
+    stderr = logging.StreamHandler()
+    stderr.setLevel(logging.DEBUG if verbose else (logging.ERROR if quiet else logging.INFO))
+    stderr.setFormatter(logging.Formatter("%(levelname)s %(message)s"))
+    log.addHandler(stderr)
+
+    jsonl_path = output.with_suffix(".log.jsonl")
+    file_handler = logging.FileHandler(jsonl_path, mode="a")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(_JsonLinesFormatter())
+    log.addHandler(file_handler)
 
 # Errors that will fail EVERY row identically and are never worth a per-row retry
 # ladder: a 401 (AuthenticationError), a permission problem, a wrong model name
@@ -109,8 +157,13 @@ def _add_stub_banner(ws, last_col: int) -> None:
 @click.option("--dry-run", is_flag=True, help="Estimate what a run will cost before starting it: column detection, question reading, and retrieval for every selected row, then real (local) token counts and an estimated price. Makes zero API calls, writes no workbook, and creates no run row.")
 @click.option("--config", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help="TOML file of tuning knobs (see src/config.py). Precedence: CLI flags > QRESP_* env vars > this file > defaults.")
 @click.option("--top-k", type=int, default=None, help="Retrieved chunks per question (highest-precedence override of the config's top_k).")
-def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, provider: str, stub_fail_row: int | None, dry_run: bool, config: Path | None, top_k: int | None):
+@click.option("--verbose", is_flag=True, help="Log per-row detail (including tracebacks) to stderr; also always written to the structured <output>.log.jsonl file.")
+@click.option("--quiet", is_flag=True, help="Suppress INFO progress logging on stderr (errors only); the structured log file is unaffected.")
+def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, provider: str, stub_fail_row: int | None, dry_run: bool, config: Path | None, top_k: int | None, verbose: bool, quiet: bool):
     from src.config import load_config
+    _setup_logging(output, verbose=verbose, quiet=quiet)
+    if verbose and quiet:
+        raise click.ClickException("--verbose and --quiet are mutually exclusive.")
 
     cli_overrides = {}
     if top_k is not None:
@@ -136,6 +189,7 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     else:
         questions = all_questions if limit == 0 else all_questions[:limit]
     click.echo(f"Answering {len(questions)} row(s) with provider={provider}.")
+    log.info("answer run starting: %d row(s), provider=%s, dry_run=%s", len(questions), provider, dry_run)
 
     if dry_run:
         _dry_run_cost_estimate(questions, all_questions, column_map)
@@ -165,6 +219,7 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     total_cache_read_tokens = 0
     total_cache_creation_tokens = 0
     consecutive_errors = 0
+    caught_exc = None  # set on the error path so the structured log can carry the traceback after the except block exits
 
     try:
         with open(jsonl_path, "a") as jsonl_file:
@@ -206,6 +261,7 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                     ) from exc
                 except Exception as exc:  # noqa: BLE001 — per-row isolation is the point
                     consecutive_errors += 1
+                    caught_exc = exc
                     # A row that burned API calls and then raised used to report zero
                     # tokens. generate_answer attaches the real usage to the exception
                     # (see generate.record_usage), so the run summary reflects money
@@ -237,6 +293,40 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                     consecutive_errors = 0
 
                 elapsed = time.monotonic() - start
+
+                if error_message is None:
+                    in_tokens = result.input_tokens
+                    out_tokens = result.output_tokens
+                else:
+                    in_tokens = (row_usage or {}).get("input_tokens")
+                    out_tokens = (row_usage or {}).get("output_tokens")
+                row_data = {
+                    "row_index": q.row_index,
+                    "final_confidence": final_confidence,
+                    "polarity": polarity,
+                    "provider": provider,
+                    "elapsed_seconds": round(elapsed, 3),
+                    "retrieval": [
+                        {
+                            "embedding_id": c.embedding_id,
+                            "combined_score": round(c.combined_score, 4),
+                            "distance": c.vector_distance,
+                        }
+                        for c in evidence
+                    ],
+                    "input_tokens": in_tokens,
+                    "output_tokens": out_tokens,
+                    "error": error_message,
+                }
+                if error_message is None:
+                    log.debug("row %s: %s (%.1fs)", q.row_index, final_confidence, elapsed, extra={"row_data": row_data})
+                else:
+                    log.error(
+                        "row %s: ERROR — %s", q.row_index, error_message,
+                        exc_info=(type(caught_exc), caught_exc, caught_exc.__traceback__) if caught_exc else True,
+                        extra={"row_data": row_data},
+                    )
+                caught_exc = None
 
                 write_answer(ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence)
                 db.record_answer(
@@ -274,6 +364,10 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     click.echo(
         f"Wrote {output} (+ {jsonl_path.name}). "
         f"answered={n_answered} flagged_low={counts['low']} not_found={counts['none']} error={counts['error']}"
+    )
+    log.info(
+        "answer run finished: answered=%d flagged_low=%d not_found=%d error=%d",
+        n_answered, counts["low"], counts["none"], counts["error"],
     )
     if provider == "anthropic" and (total_input_tokens or total_output_tokens):
         uncached_input = total_input_tokens - total_cache_read_tokens
