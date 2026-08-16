@@ -3,12 +3,12 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "vendor-security-questionnaire-rag"
+name = "questionnaire-responder"
 version = "0.1.0"
 description = "Turn a vendor security questionnaire spreadsheet into a first-pass draft, citing your own security docs for every answer and never inventing a control you don't have."
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "Proprietary" }
+license = { text = "MIT" }
 dependencies = [
     "anthropic>=0.40.0",
     "sentence-transformers>=3.0.0",

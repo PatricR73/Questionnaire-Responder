@@ -18,7 +18,7 @@ two. See Results below for the real numbers.
 
 # Vendor Security Questionnaire Responder
 
-![CI](https://github.com/PatricR73/vendor-security-questionnaire-rag/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/PatricR73/Questionnaire-Responder/actions/workflows/ci.yml/badge.svg)
 
 Companies that sell to other businesses regularly get handed a long spreadsheet of
 security questions by a prospective customer — "do you encrypt data at rest," "how
