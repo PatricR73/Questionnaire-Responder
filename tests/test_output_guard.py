@@ -1,13 +1,12 @@
 """P20: sidecar records carry a run id, and --output can never clobber the source."""
 
 import json
-import os
+import pathlib
 
 from click.testing import CliRunner
 
 from src.pipeline import cli
 
-import pathlib
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures"
 
 
@@ -18,10 +17,14 @@ def test_jsonl_records_carry_run_id_and_timestamp(tmp_path, monkeypatch):
         cli,
         [
             "answer",
-            "--questionnaire", str(FIXTURES / "questionnaire_sample.xlsx"),
-            "--output", str(output),
-            "--limit", "2",
-            "--provider", "stub",
+            "--questionnaire",
+            str(FIXTURES / "questionnaire_sample.xlsx"),
+            "--output",
+            str(output),
+            "--limit",
+            "2",
+            "--provider",
+            "stub",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -39,10 +42,14 @@ def test_output_matching_questionnaire_is_rejected(tmp_path, monkeypatch):
         cli,
         [
             "answer",
-            "--questionnaire", str(source),
-            "--output", str(source),  # same file
-            "--limit", "1",
-            "--provider", "stub",
+            "--questionnaire",
+            str(source),
+            "--output",
+            str(source),  # same file
+            "--limit",
+            "1",
+            "--provider",
+            "stub",
         ],
     )
     assert result.exit_code != 0
@@ -58,10 +65,14 @@ def test_output_symlink_to_questionnaire_is_rejected(tmp_path, monkeypatch):
         cli,
         [
             "answer",
-            "--questionnaire", str(source),
-            "--output", str(link),  # symlink resolving to the source
-            "--limit", "1",
-            "--provider", "stub",
+            "--questionnaire",
+            str(source),
+            "--output",
+            str(link),  # symlink resolving to the source
+            "--limit",
+            "1",
+            "--provider",
+            "stub",
         ],
     )
     assert result.exit_code != 0

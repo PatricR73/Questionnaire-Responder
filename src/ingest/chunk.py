@@ -28,7 +28,7 @@ def _combine_loc_refs(first: str, last: str) -> str:
         return first
     match = re.match(r"^(.*\D)(\d+)$", first)
     if match and last.startswith(match.group(1)):
-        return f"{first}–{last[len(match.group(1)):]}"
+        return f"{first}–{last[len(match.group(1)) :]}"
     return f"{first}–{last}"
 
 

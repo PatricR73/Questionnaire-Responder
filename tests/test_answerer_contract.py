@@ -84,7 +84,9 @@ def test_anthropic_answerer_matches_stub_shape(monkeypatch):
 
     # vocab_values provided so the draft's "Yes" is a legitimate member — membership
     # enforcement (P5) would otherwise downgrade it for being outside any list.
-    result = AnthropicAnswerer().answer_question("Is data encrypted in transit?", [STRONG_CHUNK], vocab_values=["Yes", "No"])
+    result = AnthropicAnswerer().answer_question(
+        "Is data encrypted in transit?", [STRONG_CHUNK], vocab_values=["Yes", "No"]
+    )
 
     assert isinstance(result, AnswerResult)
     assert set(dataclasses.asdict(result).keys()) == RESULT_FIELDS
@@ -121,7 +123,9 @@ def test_anthropic_answerer_preserves_documented_negative(monkeypatch):
     )
     monkeypatch.setattr(answerer_module, "generate_answer", lambda *a, **k: fake_draft)
 
-    result = AnthropicAnswerer().answer_question("Do you allow shared accounts?", [DENIAL_CHUNK], vocab_values=["Yes", "No"])
+    result = AnthropicAnswerer().answer_question(
+        "Do you allow shared accounts?", [DENIAL_CHUNK], vocab_values=["Yes", "No"]
+    )
 
     assert result.status == AnswerStatus.ANSWERED
     assert result.polarity == AnswerPolarity.DENIES

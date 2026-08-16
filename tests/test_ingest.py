@@ -48,8 +48,7 @@ def test_shortened_rewrite_removes_stale_chunks_from_both_stores(tmp_path):
 
     # Rewrite the same file shorter — sections 3-7 are gone from the document.
     short_policy = "\n".join(
-        f"# Section {i}\n\nThis is paragraph content for section {i} of the access control policy."
-        for i in range(1, 3)
+        f"# Section {i}\n\nThis is paragraph content for section {i} of the access control policy." for i in range(1, 3)
     )
     evidence_dir = _make_evidence_dir(tmp_path, {"policy.md": short_policy})
     n_short = ingest_evidence(evidence_dir, conn, vector_store)

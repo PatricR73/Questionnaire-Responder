@@ -46,6 +46,7 @@ class GroundedConfidence(str):
     Callers that need the ids (AnthropicAnswerer, which must record only
     actually-cited chunks in AnswerResult.cited_chunk_ids) read .cited_ids;
     everything else treats the value as the string it always was."""
+
     cited_ids: frozenset[str] = frozenset()
 
     def __new__(cls, value: str, *, cited_ids: frozenset[str]):

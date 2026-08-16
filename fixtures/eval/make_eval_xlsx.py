@@ -20,7 +20,8 @@ from openpyxl.comments import Comment
 from openpyxl.styles import Font
 
 HERE = Path(__file__).parent
-questions = json.load(open(HERE / "questions.json"))["questions"]
+with open(HERE / "questions.json") as f:
+    questions = json.load(f)["questions"]
 
 wb = Workbook()
 ws = wb.active

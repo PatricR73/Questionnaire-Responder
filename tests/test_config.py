@@ -2,7 +2,7 @@
 
 import pytest
 
-from src.config import Config, load_config
+from src.config import load_config
 
 
 def test_defaults_match_the_module_constants():
@@ -52,6 +52,7 @@ def test_env_var_overrides_toml(tmp_path, monkeypatch):
 
 def RRF_K_from_module():
     from src.retrieval.hybrid_search import RRF_K
+
     return RRF_K
 
 

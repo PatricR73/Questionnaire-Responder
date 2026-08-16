@@ -34,7 +34,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from src.answer import generate as generate_module
-from src.answer.confidence import GroundedConfidence, WEAK_MATCH_DISTANCE, cross_check_confidence
+from src.answer.confidence import WEAK_MATCH_DISTANCE, GroundedConfidence, cross_check_confidence
 from src.answer.generate import generate_answer
 from src.retrieval.hybrid_search import RetrievedChunk
 
@@ -104,12 +104,15 @@ class AnthropicAnswerer(Answerer):
         row_index: int | None = None,
     ) -> AnswerResult:
         draft = generate_answer(
-            question, chunks, vocab_values,
+            question,
+            chunks,
+            vocab_values,
             model=self._model or generate_module.MODEL,
             max_tokens=self._max_tokens or generate_module.MAX_TOKENS,
         )
         final_confidence = cross_check_confidence(
-            draft, chunks,
+            draft,
+            chunks,
             weak_match_distance=self._weak_match_distance or WEAK_MATCH_DISTANCE,
         )
         # Only chunks whose text actually contained a cited sentence count as cited —
@@ -153,7 +156,9 @@ class AnthropicAnswerer(Answerer):
         return AnswerResult(
             answer=draft.answer,
             status=AnswerStatus.ANSWERED,
-            confidence=str(final_confidence),  # "high" or "low" (plain str — the GroundedConfidence cited-ids metadata belongs to this decision, not to consumers of the result)
+            confidence=str(
+                final_confidence
+            ),  # "high" or "low" (plain str — the GroundedConfidence cited-ids metadata belongs to this decision, not to consumers of the result)
             cited_chunk_ids=cited_chunk_ids,
             provider=self.provider_name,
             vocab_selection=vocab_selection,
@@ -188,7 +193,9 @@ class StubAnswerer(Answerer):
             raise RuntimeError(f"StubAnswerer: simulated failure on row {row_index} (--stub-fail-row)")
 
         distances = [c.vector_distance for c in chunks if c.vector_distance is not None]
-        best_chunk = min(chunks, key=lambda c: c.vector_distance if c.vector_distance is not None else float("inf"), default=None)
+        best_chunk = min(
+            chunks, key=lambda c: c.vector_distance if c.vector_distance is not None else float("inf"), default=None
+        )
         best_distance = min(distances) if distances else None
 
         if best_distance is not None and best_distance <= self._weak_match_distance:

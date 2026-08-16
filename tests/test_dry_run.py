@@ -17,6 +17,7 @@ from src.store import db
 
 FIXTURES = os.path.join(os.path.dirname(__file__), "..", "fixtures")
 import pathlib
+
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures"
 
 
@@ -29,10 +30,14 @@ def test_dry_run_reports_cost_without_writing_anything(tmp_path, monkeypatch):
         cli,
         [
             "answer",
-            "--questionnaire", str(FIXTURES / "questionnaire_sample.xlsx"),
-            "--output", str(output),
-            "--limit", "0",
-            "--provider", "anthropic",
+            "--questionnaire",
+            str(FIXTURES / "questionnaire_sample.xlsx"),
+            "--output",
+            str(output),
+            "--limit",
+            "0",
+            "--provider",
+            "anthropic",
             "--dry-run",
         ],
     )
@@ -63,10 +68,14 @@ def test_dry_run_does_not_require_an_api_key(tmp_path, monkeypatch):
         cli,
         [
             "answer",
-            "--questionnaire", str(FIXTURES / "questionnaire_sample.xlsx"),
-            "--output", str(output),
-            "--limit", "2",
-            "--provider", "anthropic",
+            "--questionnaire",
+            str(FIXTURES / "questionnaire_sample.xlsx"),
+            "--output",
+            str(output),
+            "--limit",
+            "2",
+            "--provider",
+            "anthropic",
             "--dry-run",
         ],
     )

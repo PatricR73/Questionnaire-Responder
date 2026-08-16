@@ -48,7 +48,7 @@ OUTPUT = REPO_ROOT / "out" / "eval_run.xlsx"
 
 sys.path.insert(0, str(REPO_ROOT))
 
-from src.store.db import connect  # noqa: E402
+from src.store.db import connect
 
 EXPECTED_STATUS = {
     "ANSWERED_AFFIRMS": "ANSWERED",
@@ -90,15 +90,21 @@ _WILSON_Z = 1.959963984540054
 
 def run_pipeline(output_path: Path, config_file: Path | None = None) -> None:
     cmd = [
-        sys.executable, "-m", "src.pipeline", "answer",
-        "--questionnaire", str(QUESTIONNAIRE),
-        "--output", str(output_path),
-        "--limit", "0",
+        sys.executable,
+        "-m",
+        "src.pipeline",
+        "answer",
+        "--questionnaire",
+        str(QUESTIONNAIRE),
+        "--output",
+        str(output_path),
+        "--limit",
+        "0",
     ]
     if config_file is not None:
         cmd += ["--config", str(config_file)]
     print(f"Running: {' '.join(cmd)}")
-    result = subprocess.run(cmd, cwd=REPO_ROOT)
+    result = subprocess.run(cmd, cwd=REPO_ROOT, check=False)
     if result.returncode != 0:
         raise SystemExit(f"pipeline run failed (exit {result.returncode})")
 
@@ -107,13 +113,15 @@ def load_run_rows(output_path: Path) -> list[dict]:
     """Pull one run's scored rows out of the store, joined to the fixture labels."""
     source_id_by_row = {}
     import openpyxl
+
     ws = openpyxl.load_workbook(QUESTIONNAIRE).active
     for row in range(2, ws.max_row + 1):
         source_id = ws.cell(row=row, column=1).value
         if source_id:
             source_id_by_row[row] = source_id
 
-    questions = {q["source_id"]: q for q in json.load(open(QUESTIONS))["questions"]}
+    with open(QUESTIONS) as f:
+        questions = {q["source_id"]: q for q in json.load(f)["questions"]}
 
     conn = connect(REPO_ROOT / "out" / "store.db")
     run_id = conn.execute(
@@ -176,7 +184,10 @@ def score_run(rows: list[dict]) -> tuple[int, list[str], list[str]]:
         matches += structural_match(expected_label, status, polarity)
         if expected_label == NOT_FOUND_LABEL and status == "ANSWERED":
             not_found_regressions.append(r["source_id"])
-        if EXPECTED_POLARITY[expected_label] in _POLARITY_INVERSIONS and polarity == _POLARITY_INVERSIONS[EXPECTED_POLARITY[expected_label]]:
+        if (
+            EXPECTED_POLARITY[expected_label] in _POLARITY_INVERSIONS
+            and polarity == _POLARITY_INVERSIONS[EXPECTED_POLARITY[expected_label]]
+        ):
             polarity_inversions.append(r["source_id"])
     return matches, not_found_regressions, polarity_inversions
 
@@ -203,7 +214,7 @@ def print_run_detail(rows: list[dict], not_found_regressions: list[str], polarit
         is_match = structural_match(r["expected_label"], r["status"], r["polarity"])
         print(
             f"{r['source_id']:10s} expected={r['expected_label']:20s} status={r['status']:10s} "
-            f"confidence={r['confidence']:6s} polarity={str(r['polarity']):8s} "
+            f"confidence={r['confidence']:6s} polarity={r['polarity']!s:8s} "
             f"match={'yes' if is_match else 'NO'}"
         )
         print(f"  answer: {r['answer'] or '(empty)'}")
@@ -220,7 +231,9 @@ def print_run_detail(rows: list[dict], not_found_regressions: list[str], polarit
     else:
         print("No NOT_FOUND regressions.")
     if polarity_inversions:
-        print(f"!!! POLARITY INVERSION: these questions answered the OPPOSITE of their expected polarity: {polarity_inversions}")
+        print(
+            f"!!! POLARITY INVERSION: these questions answered the OPPOSITE of their expected polarity: {polarity_inversions}"
+        )
     else:
         print("No polarity inversions.")
 
@@ -306,8 +319,10 @@ def main():
     # this n is distinguishable from sampling noise.
     mean_k = round(mean_matches)
     ci_lo, ci_hi = wilson_interval(mean_k, n_questions)
-    print(f"95% Wilson CI for structural-match proportion (n={n_questions}, mean across {repeats} run(s)): "
-          f"[{ci_lo:.2f}, {ci_hi:.2f}]")
+    print(
+        f"95% Wilson CI for structural-match proportion (n={n_questions}, mean across {repeats} run(s)): "
+        f"[{ci_lo:.2f}, {ci_hi:.2f}]"
+    )
 
     if repeats == 1:
         print()

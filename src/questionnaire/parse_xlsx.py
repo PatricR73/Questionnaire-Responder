@@ -71,7 +71,9 @@ def _find_header_row(ws: Worksheet) -> int:
         answer_col = _find_column(ws, row, ANSWER_KEYWORDS)
         if question_col is not None and answer_col is not None:
             return row
-    raise ValueError(f"Could not find a header row with both a question and an answer column in the first {HEADER_SCAN_ROWS} rows")
+    raise ValueError(
+        f"Could not find a header row with both a question and an answer column in the first {HEADER_SCAN_ROWS} rows"
+    )
 
 
 def _find_column(ws: Worksheet, header_row: int, keywords: tuple[str, ...], decoys: tuple[str, ...] = ()) -> int | None:
@@ -170,9 +172,18 @@ def detect_columns(ws: Worksheet) -> ColumnMap:
 
     log.info(
         "Detected columns: question=%s answer=%s vocab=%s (header row %s) — check before spending money on a run.",
-        question_col, answer_col, vocab_col, header_row,
+        question_col,
+        answer_col,
+        vocab_col,
+        header_row,
     )
-    return ColumnMap(header_row=header_row, question_col=question_col, answer_col=answer_col, vocab_col=vocab_col, vocab_values=vocab_values)
+    return ColumnMap(
+        header_row=header_row,
+        question_col=question_col,
+        answer_col=answer_col,
+        vocab_col=vocab_col,
+        vocab_values=vocab_values,
+    )
 
 
 def _is_section_header_row(ws: Worksheet, row: int, question_col: int) -> bool:

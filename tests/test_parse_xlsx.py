@@ -11,7 +11,7 @@ decoys are penalized, and the highest scorer wins.
 import openpyxl
 import pytest
 
-from src.questionnaire.parse_xlsx import ColumnMap, detect_columns, read_questions
+from src.questionnaire.parse_xlsx import detect_columns, read_questions
 
 
 def _sheet(headers, *, header_row=1, extra_rows=None):
@@ -19,7 +19,7 @@ def _sheet(headers, *, header_row=1, extra_rows=None):
     ws = wb.active
     for col, text in enumerate(headers, start=1):
         ws.cell(row=header_row, column=col, value=text)
-    for row in (extra_rows or []):
+    for row in extra_rows or []:
         for col, value in row.items():
             ws.cell(row=col if False else value[0], column=value[1], value=value[2])
     return ws
@@ -88,6 +88,7 @@ def test_sheet_with_vocabulary_column_and_dropdown():
     ws = wb.active
     _write_row(ws, 1, ["Question", "Vendor Response", "Compliance Status"])
     from openpyxl.worksheet.datavalidation import DataValidation
+
     dv = DataValidation(type="list", formula1='"Yes,No"', allow_blank=True)
     dv.add("C2:C100")
     ws.add_data_validation(dv)

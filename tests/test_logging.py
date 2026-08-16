@@ -15,7 +15,6 @@ from click.testing import CliRunner
 from src.pipeline import cli
 
 FIXTURES = __import__("pathlib").Path(__file__).resolve().parent.parent / "fixtures"
-import pathlib
 
 
 def test_structured_log_file_captures_rows_and_failures(tmp_path, monkeypatch):
@@ -25,11 +24,16 @@ def test_structured_log_file_captures_rows_and_failures(tmp_path, monkeypatch):
         cli,
         [
             "answer",
-            "--questionnaire", str(FIXTURES / "questionnaire_sample.xlsx"),
-            "--output", str(output),
-            "--limit", "0",
-            "--provider", "stub",
-            "--stub-fail-row", "5",
+            "--questionnaire",
+            str(FIXTURES / "questionnaire_sample.xlsx"),
+            "--output",
+            str(output),
+            "--limit",
+            "0",
+            "--provider",
+            "stub",
+            "--stub-fail-row",
+            "5",
         ],
     )
     assert result.exit_code == 0, result.output
@@ -57,10 +61,14 @@ def test_verbose_shows_detail_quiet_hides_it(tmp_path, monkeypatch):
     monkeypatch.setenv("QRESP_DATA_DIR", str(tmp_path / "data"))
     args = [
         "answer",
-        "--questionnaire", str(FIXTURES / "questionnaire_sample.xlsx"),
-        "--output", str(tmp_path / "v.xlsx"),
-        "--limit", "1",
-        "--provider", "stub",
+        "--questionnaire",
+        str(FIXTURES / "questionnaire_sample.xlsx"),
+        "--output",
+        str(tmp_path / "v.xlsx"),
+        "--limit",
+        "1",
+        "--provider",
+        "stub",
     ]
     quiet = CliRunner().invoke(cli, args + ["--quiet"])
     verbose = CliRunner().invoke(cli, args + ["--verbose"])

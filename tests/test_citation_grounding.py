@@ -65,7 +65,9 @@ def test_sentence_straddling_a_chunk_boundary_is_rejected():
     # "...TLS 1.2. MFA is required" exists only in the *join* of the two chunks —
     # the pre-fix check collapsed that join newline to a space and accepted it.
     # Neither chunk contains the full sentence, so it must be rejected.
-    stitched = "All network traffic is encrypted in transit using TLS 1.2. MFA is required for all administrative accounts."
+    stitched = (
+        "All network traffic is encrypted in transit using TLS 1.2. MFA is required for all administrative accounts."
+    )
     assert cross_check_confidence(_draft([stitched]), [TAIL_CHUNK, HEAD_CHUNK]) == "none"
 
 

@@ -21,40 +21,44 @@ from src.answer.generate import MalformedAnswerError, _extract_answer_payload, g
 # eval run (question IAM-15.1). "cited_sentences" is entirely absent from the JSON;
 # what should have been that key's value instead leaked into "answer" as
 # tool-call-shaped text ("</answer>\n<parameter name=\"cited_sentences\">...").
-MALFORMED_PAYLOAD_TEXT = json.dumps({
-    "answer": (
-        "The evidence shows conflicting password rotation requirements from two different "
-        "source documents. The access_control_policy.md states that \"Passwords must be at "
-        "least 14 characters and are rotated every 180 days,\" while it_operations_standards.md "
-        "states that \"All account passwords must be rotated at least every 90 days.\" Both "
-        "documents describe password management processes (minimum length, rotation, MFA "
-        "requirements, prohibition of shared accounts, password reuse blocking), indicating "
-        "that processes and technical measures for password management are defined and "
-        "implemented, but the specific rotation period is contradictory between the two "
-        "documents and cannot be reconciled from the evidence provided. Additionally, no "
-        "evidence was found regarding whether these password management processes are "
-        "formally \"evaluated\" (e.g., audited or reviewed).</answer>\n"
-        "<parameter name=\"cited_sentences\">[\"Passwords must be at least 14 characters and "
-        "are rotated every 180 days.\", \"All account passwords must be rotated at least "
-        "every 90 days.\", \"Password reuse across the last 10 passwords is blocked by the "
-        "identity provider's policy engine.\", \"Shared accounts are prohibited.\", \"All "
-        "employee accounts require multi-factor authentication (MFA) using a hardware key or "
-        "an authenticator app.\"]"
-    ),
-    "vocab_selection": None,
-    "self_confidence": "low",
-    "polarity": "partial",
-    "supported": True,
-})
+MALFORMED_PAYLOAD_TEXT = json.dumps(
+    {
+        "answer": (
+            "The evidence shows conflicting password rotation requirements from two different "
+            'source documents. The access_control_policy.md states that "Passwords must be at '
+            'least 14 characters and are rotated every 180 days," while it_operations_standards.md '
+            'states that "All account passwords must be rotated at least every 90 days." Both '
+            "documents describe password management processes (minimum length, rotation, MFA "
+            "requirements, prohibition of shared accounts, password reuse blocking), indicating "
+            "that processes and technical measures for password management are defined and "
+            "implemented, but the specific rotation period is contradictory between the two "
+            "documents and cannot be reconciled from the evidence provided. Additionally, no "
+            "evidence was found regarding whether these password management processes are "
+            'formally "evaluated" (e.g., audited or reviewed).</answer>\n'
+            '<parameter name="cited_sentences">["Passwords must be at least 14 characters and '
+            'are rotated every 180 days.", "All account passwords must be rotated at least '
+            'every 90 days.", "Password reuse across the last 10 passwords is blocked by the '
+            'identity provider\'s policy engine.", "Shared accounts are prohibited.", "All '
+            "employee accounts require multi-factor authentication (MFA) using a hardware key or "
+            'an authenticator app."]'
+        ),
+        "vocab_selection": None,
+        "self_confidence": "low",
+        "polarity": "partial",
+        "supported": True,
+    }
+)
 
-VALID_PAYLOAD_TEXT = json.dumps({
-    "supported": True,
-    "answer": "Passwords rotate every 180 days per one document and every 90 days per another; contradictory.",
-    "cited_sentences": ["Passwords must be at least 14 characters and are rotated every 180 days."],
-    "vocab_selection": None,
-    "self_confidence": "low",
-    "polarity": "partial",
-})
+VALID_PAYLOAD_TEXT = json.dumps(
+    {
+        "supported": True,
+        "answer": "Passwords rotate every 180 days per one document and every 90 days per another; contradictory.",
+        "cited_sentences": ["Passwords must be at least 14 characters and are rotated every 180 days."],
+        "vocab_selection": None,
+        "self_confidence": "low",
+        "polarity": "partial",
+    }
+)
 
 
 def _fake_response(text: str, input_tokens: int = 100, output_tokens: int = 50):
@@ -90,6 +94,7 @@ def test_generate_answer_recovers_via_corrective_retry(monkeypatch):
             self.messages = FakeMessages()
 
     import anthropic as real_anthropic
+
     monkeypatch.setattr(real_anthropic, "Anthropic", FakeClient)
 
     draft = generate_answer("Are passwords securely managed?", [])
@@ -116,6 +121,7 @@ def test_generate_answer_raises_malformed_after_retry_also_fails(monkeypatch):
             self.messages = FakeMessages()
 
     import anthropic as real_anthropic
+
     monkeypatch.setattr(real_anthropic, "Anthropic", FakeClient)
 
     # A row that fails twice must raise, not return a fabricated or NOT_FOUND-shaped

@@ -51,7 +51,10 @@ def write_answer(
     if final_confidence == "error":
         answer_cell.value = ERROR_MARKER
         answer_cell.fill = ERROR_FILL
-        answer_cell.comment = Comment("This row was not processed due to an error — re-run it, do not treat as 'no evidence'.", "Questionnaire Responder")
+        answer_cell.comment = Comment(
+            "This row was not processed due to an error — re-run it, do not treat as 'no evidence'.",
+            "Questionnaire Responder",
+        )
         _clear_vocab_cell(ws, row_index, column_map)
         return
 

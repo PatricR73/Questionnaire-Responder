@@ -14,18 +14,16 @@ Three things this locks in:
    burning the whole sheet.
 """
 
-import httpx
-
 import anthropic
-import click
+import httpx
 import openpyxl
 import pytest
 from click.testing import CliRunner
 
 import src.answer.generate as generate_module
 import src.pipeline as pipeline_module
-from src.answer.generate import MAX_RETRIES, generate_answer
 from src.answer.answerer import StubAnswerer
+from src.answer.generate import MAX_RETRIES, generate_answer
 from src.pipeline import cli
 
 FIXTURES = pipeline_module.Path(__file__).parent.parent / "fixtures"
@@ -55,8 +53,14 @@ class _FakeMessages:
         if exc is not None:
             raise exc
         import types
+
         return types.SimpleNamespace(
-            content=[types.SimpleNamespace(type="text", text='{"supported": false, "answer": "", "cited_sentences": [], "vocab_selection": null, "self_confidence": "none", "polarity": null}')],
+            content=[
+                types.SimpleNamespace(
+                    type="text",
+                    text='{"supported": false, "answer": "", "cited_sentences": [], "vocab_selection": null, "self_confidence": "none", "polarity": null}',
+                )
+            ],
             stop_reason="end_turn",
             usage=types.SimpleNamespace(input_tokens=10, output_tokens=5),
         )
@@ -85,7 +89,7 @@ def test_generate_answer_retries_exactly_the_total_attempt_budget(monkeypatch):
     assert len(sleeps) == MAX_RETRIES - 1, "one sleep per retry"
     # exponential backoff 1s, 2s, each with jitter < 0.5s
     for i, s in enumerate(sleeps):
-        base = 2 ** i
+        base = 2**i
         assert base <= s < base + generate_module.RETRY_JITTER_SECONDS + 1e-9, f"sleep {s} not in jittered window"
 
 
@@ -140,10 +144,14 @@ def test_fatal_error_aborts_the_run_immediately(monkeypatch, tmp_path):
         cli,
         [
             "answer",
-            "--questionnaire", str(FIXTURES / "questionnaire_sample.xlsx"),
-            "--output", str(output),
-            "--limit", "0",
-            "--provider", "anthropic",
+            "--questionnaire",
+            str(FIXTURES / "questionnaire_sample.xlsx"),
+            "--output",
+            str(output),
+            "--limit",
+            "0",
+            "--provider",
+            "anthropic",
         ],
     )
     assert result.exit_code != 0
@@ -169,10 +177,14 @@ def test_circuit_breaker_stops_a_systemic_failure(monkeypatch, tmp_path):
         cli,
         [
             "answer",
-            "--questionnaire", str(FIXTURES / "questionnaire_sample.xlsx"),
-            "--output", str(output),
-            "--limit", "0",
-            "--provider", "stub",
+            "--questionnaire",
+            str(FIXTURES / "questionnaire_sample.xlsx"),
+            "--output",
+            str(output),
+            "--limit",
+            "0",
+            "--provider",
+            "stub",
         ],
     )
     assert result.exit_code != 0
@@ -182,8 +194,6 @@ def test_circuit_breaker_stops_a_systemic_failure(monkeypatch, tmp_path):
     wb = openpyxl.load_workbook(output)
     ws = wb.active
     from src.questionnaire.write_xlsx import ERROR_MARKER
-    error_cells = [
-        cell for row in ws.iter_rows() for cell in row
-        if cell.value == ERROR_MARKER
-    ]
+
+    error_cells = [cell for row in ws.iter_rows() for cell in row if cell.value == ERROR_MARKER]
     assert len(error_cells) == pipeline_module.CONSECUTIVE_ERROR_LIMIT - 1

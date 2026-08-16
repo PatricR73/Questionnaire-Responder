@@ -30,7 +30,7 @@ def parse_document(path: Path) -> list[ParsedBlock]:
     raise ValueError(f"Unsupported evidence document type: {suffix}")
 
 
-_MD_HEADING_RE = re.compile(r"^(#{1,%d})\s+(.*)$" % MAX_HEADING_LEVEL)
+_MD_HEADING_RE = re.compile(rf"^(#{{1,{MAX_HEADING_LEVEL}}})\s+(.*)$")
 
 
 def _parse_markdown_or_text(path: Path) -> list[ParsedBlock]:

@@ -6,17 +6,15 @@ CliRunner — ingest, then answer — with no API key and no network beyond the
 one-time embedding model download (already cached by test_pipeline_smoke).
 """
 
-import os
+import pathlib
 
 import openpyxl
-import pytest
 from click.testing import CliRunner
 
 from src.pipeline import STUB_BANNER_TEXT, cli
 from src.questionnaire.write_xlsx import ERROR_FILL, ERROR_MARKER, NOT_FOUND_MARKER
 from src.store import db
 
-import pathlib
 FIXTURES = pathlib.Path(__file__).resolve().parent.parent / "fixtures"
 SAMPLE = FIXTURES / "questionnaire_sample.xlsx"
 EVIDENCE = FIXTURES / "evidence"
@@ -49,7 +47,9 @@ def test_stub_run_preserves_source_structure_and_populates_answers(tmp_path, mon
     # section-header and spacer rows untouched
     for row in (2, 4, 7):
         for col in range(1, source_ws.max_column + 1):
-            assert source_ws.cell(row=row, column=col).value == out_ws.cell(row=row, column=col).value, f"row {row} col {col} changed"
+            assert source_ws.cell(row=row, column=col).value == out_ws.cell(row=row, column=col).value, (
+                f"row {row} col {col} changed"
+            )
 
     # every detected question row (3,5,6,8,9,10) has a populated answer cell
     for row in (3, 5, 6, 8, 9, 10):
@@ -81,7 +81,9 @@ def test_stub_banner_is_merged_and_styled(tmp_path, monkeypatch):
 
 
 def test_stub_fail_row_marks_only_that_row(tmp_path, monkeypatch):
-    result, output = _ingest_and_answer(tmp_path, monkeypatch, ["--provider", "stub", "--limit", "0", "--stub-fail-row", "5"])
+    result, output = _ingest_and_answer(
+        tmp_path, monkeypatch, ["--provider", "stub", "--limit", "0", "--stub-fail-row", "5"]
+    )
     assert result.exit_code == 0, result.output
 
     ws = openpyxl.load_workbook(output).active

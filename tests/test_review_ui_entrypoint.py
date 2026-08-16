@@ -54,8 +54,16 @@ def test_review_ui_finds_a_seeded_run_from_a_foreign_cwd(tmp_path, monkeypatch):
     conn = db.connect(data_dir / "store.db")
     run_id = db.start_questionnaire_run(conn, "source.xlsx", "out.xlsx")
     db.record_answer(
-        conn, run_id, 2, "Question one?", "Question one?",
-        "Drafted answer text", None, "high", "high", [],
+        conn,
+        run_id,
+        2,
+        "Question one?",
+        "Question one?",
+        "Drafted answer text",
+        None,
+        "high",
+        "high",
+        [],
     )
     conn.close()
 
@@ -76,6 +84,7 @@ def _created_at_label(data_dir: Path) -> str:
     """Re-read the seeded run's created_at to build the exact selectbox label the
     review UI produces (f"{source_path}  —  {created_at}")."""
     from src.store import db
+
     conn = db.connect(data_dir / "store.db")
     row = conn.execute("SELECT created_at FROM questionnaire_runs ORDER BY id DESC LIMIT 1").fetchone()
     conn.close()
@@ -97,6 +106,7 @@ def test_review_ui_runs_under_streamlits_actual_sys_path_setup(tmp_path):
         text=True,
         timeout=30,
         env=env,
+        check=False,
     )
     assert result.returncode == 0, result.stderr
     assert "ModuleNotFoundError" not in result.stderr

@@ -32,8 +32,16 @@ def test_chunk_blocks_collapses_hard_wrap_newlines():
     # Simulates a source file hard-wrapped mid-sentence, exactly like this project's
     # real fixtures: one ParsedBlock per physical line, split at the wrap point.
     blocks = [
-        ParsedBlock(heading_path="Encryption", loc_ref="line 1", text="Customers do not have the ability to manage their own encryption keys; all"),
-        ParsedBlock(heading_path="Encryption", loc_ref="line 2", text="key management is performed internally by the security team."),
+        ParsedBlock(
+            heading_path="Encryption",
+            loc_ref="line 1",
+            text="Customers do not have the ability to manage their own encryption keys; all",
+        ),
+        ParsedBlock(
+            heading_path="Encryption",
+            loc_ref="line 2",
+            text="key management is performed internally by the security team.",
+        ),
     ]
     chunks = chunk_blocks(blocks, source_filename="doc.md")
     assert len(chunks) == 1
@@ -56,7 +64,11 @@ def test_cross_check_confidence_grounds_citation_across_a_line_wrap():
     )
     # The model quotes the sentence with normal spacing, as it actually did in the real
     # run this test reproduces — not the source file's line-wrap layout.
-    draft = _draft(["Customers do not have the ability to manage their own encryption keys; all key management is performed internally by the security team."])
+    draft = _draft(
+        [
+            "Customers do not have the ability to manage their own encryption keys; all key management is performed internally by the security team."
+        ]
+    )
 
     assert cross_check_confidence(draft, [chunk]) == "high"
 

@@ -10,6 +10,8 @@ the verbatim citation-grounding check for a model that quoted that sentence
 correctly.
 """
 
+from itertools import pairwise
+
 from src.ingest.chunk import MAX_CHUNK_CHARS, chunk_blocks, normalize_whitespace
 from src.ingest.parse_docs import ParsedBlock
 
@@ -28,7 +30,9 @@ def test_no_chunk_exceeds_the_ceiling():
     chunks = chunk_blocks(blocks, source_filename="doc.md")
     assert len(chunks) >= 3
     for chunk in chunks:
-        assert len(chunk.text) <= MAX_CHUNK_CHARS, f"chunk of {len(chunk.text)} chars exceeds ceiling: {chunk.text[:80]}..."
+        assert len(chunk.text) <= MAX_CHUNK_CHARS, (
+            f"chunk of {len(chunk.text)} chars exceeds ceiling: {chunk.text[:80]}..."
+        )
 
 
 def test_sentence_spanning_a_block_boundary_is_fully_present_in_one_chunk():
@@ -53,7 +57,7 @@ def test_overlap_repeats_boundary_sentences_between_same_heading_chunks():
     blocks = [_block("A", text)]
     chunks = chunk_blocks(blocks, source_filename="doc.md")
     assert len(chunks) >= 2
-    for prev, nxt in zip(chunks, chunks[1:]):
+    for prev, nxt in pairwise(chunks):
         prev_tail = normalize_whitespace(prev.text).rsplit(". ", 2)[-1]
         # the last sentence of prev appears at the start of next
         assert prev_tail.rstrip(".") in nxt.text

@@ -57,8 +57,7 @@ def ingest_evidence(evidence_dir: Path, conn: sqlite3.Connection, vector_store: 
         ids = [f"{source_key}::{i}" for i in range(len(chunks))]
         texts = [c.text for c in chunks]
         metadatas = [
-            {"source_filename": c.source_filename, "heading_path": c.heading_path, "loc_ref": c.loc_ref}
-            for c in chunks
+            {"source_filename": c.source_filename, "heading_path": c.heading_path, "loc_ref": c.loc_ref} for c in chunks
         ]
         vector_store.upsert(ids=ids, texts=texts, metadatas=metadatas)
 

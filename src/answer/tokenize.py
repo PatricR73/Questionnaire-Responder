@@ -29,9 +29,7 @@ from pathlib import Path
 import httpx
 from tokenizers import Tokenizer
 
-_TOKENIZER_REMOTE_URL = (
-    "https://huggingface.co/Xenova/claude-tokenizer/resolve/main/tokenizer.json"
-)
+_TOKENIZER_REMOTE_URL = "https://huggingface.co/Xenova/claude-tokenizer/resolve/main/tokenizer.json"
 _tokenizer: Tokenizer | None = None
 
 

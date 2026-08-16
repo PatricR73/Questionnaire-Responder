@@ -149,7 +149,14 @@ def record_audit_entry(
     conn.execute(
         "INSERT INTO audit_log (run_id, row_index, sources_consulted, confidence, provider, human_action, timestamp) "
         "VALUES (?, ?, ?, ?, ?, NULL, ?)",
-        (run_id, row_index, json.dumps(sources_consulted), confidence, provider, datetime.now(timezone.utc).isoformat()),
+        (
+            run_id,
+            row_index,
+            json.dumps(sources_consulted),
+            confidence,
+            provider,
+            datetime.now(timezone.utc).isoformat(),
+        ),
     )
     conn.commit()
 
@@ -190,6 +197,10 @@ def record_export(conn: sqlite3.Connection, run_id: int, output_path: str, revie
     conn.execute(
         "INSERT INTO audit_log (run_id, row_index, sources_consulted, confidence, provider, human_action, timestamp) "
         "VALUES (?, -1, ?, 'export', NULL, 'exported', ?)",
-        (run_id, json.dumps({"output_path": output_path, "review_counts": review_counts}), datetime.now(timezone.utc).isoformat()),
+        (
+            run_id,
+            json.dumps({"output_path": output_path, "review_counts": review_counts}),
+            datetime.now(timezone.utc).isoformat(),
+        ),
     )
     conn.commit()

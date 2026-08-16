@@ -153,7 +153,10 @@ def build_answer_schema(vocab_values: list[str] | None = None) -> dict:
     return {
         "type": "object",
         "properties": {
-            "supported": {"type": "boolean", "description": "Whether the provided evidence supports any answer at all."},
+            "supported": {
+                "type": "boolean",
+                "description": "Whether the provided evidence supports any answer at all.",
+            },
             "answer": {"type": "string", "description": "The drafted answer text, or empty string if unsupported."},
             "cited_sentences": {
                 "type": "array",
@@ -177,6 +180,7 @@ def build_answer_schema(vocab_values: list[str] | None = None) -> dict:
         "required": ["supported", "answer", "cited_sentences", "vocab_selection", "self_confidence", "polarity"],
         "additionalProperties": False,
     }
+
 
 _CORRECTIVE_SUFFIX = (
     "\n\n(Your previous response for this question did not parse as the required JSON object. "
@@ -228,7 +232,9 @@ def _extract_answer_payload(response, max_tokens: int = MAX_TOKENS) -> dict:
     text_block = next((block for block in response.content if block.type == "text"), None)
     if text_block is None:
         block_types = [block.type for block in response.content]
-        raise MalformedAnswerError(f"No text content block in response (stop_reason={response.stop_reason!r}, blocks={block_types})")
+        raise MalformedAnswerError(
+            f"No text content block in response (stop_reason={response.stop_reason!r}, blocks={block_types})"
+        )
 
     try:
         payload = json.loads(text_block.text)
@@ -237,7 +243,9 @@ def _extract_answer_payload(response, max_tokens: int = MAX_TOKENS) -> dict:
 
     if not isinstance(payload, dict) or not REQUIRED_ANSWER_KEYS.issubset(payload.keys()):
         got_keys = set(payload.keys()) if isinstance(payload, dict) else "(not a JSON object)"
-        raise MalformedAnswerError(f"Response JSON missing required keys: {REQUIRED_ANSWER_KEYS - (got_keys if isinstance(got_keys, set) else set())}; got: {got_keys}")
+        raise MalformedAnswerError(
+            f"Response JSON missing required keys: {REQUIRED_ANSWER_KEYS - (got_keys if isinstance(got_keys, set) else set())}; got: {got_keys}"
+        )
 
     return payload
 
@@ -271,7 +279,12 @@ def generate_answer(
     # hand-rolled loop below — with both active, a rate-limited row could issue
     # roughly a dozen requests. Retry policy lives in exactly one place.
     client = anthropic.Anthropic(timeout=REQUEST_TIMEOUT_SECONDS, max_retries=0)
-    retryable = (anthropic.RateLimitError, anthropic.InternalServerError, anthropic.APITimeoutError, anthropic.APIConnectionError)
+    retryable = (
+        anthropic.RateLimitError,
+        anthropic.InternalServerError,
+        anthropic.APITimeoutError,
+        anthropic.APIConnectionError,
+    )
 
     def create_message(user_content: str, max_tokens: int = max_tokens, model: str = model):
         """client.messages.create with the reproducibility temperature applied.

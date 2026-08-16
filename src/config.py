@@ -15,9 +15,10 @@ from __future__ import annotations
 
 import dataclasses
 import os
-import tomllib
 from dataclasses import dataclass, fields
 from pathlib import Path
+
+import tomllib
 
 from src.answer.confidence import WEAK_MATCH_DISTANCE
 from src.answer.generate import MAX_TOKENS, MODEL
@@ -28,12 +29,28 @@ from src.store.vectorstore import DEFAULT_MODEL
 # Every field name the Config carries; used to validate TOML keys and env vars so a
 # typo fails loudly instead of silently configuring nothing.
 _FIELD_NAMES = {
-    "model", "max_tokens", "weak_match_distance", "vector_weight", "rrf_k",
-    "candidate_pool", "top_k", "max_chunk_chars", "min_chunk_chars",
-    "overlap_sentences", "embedding_model",
+    "model",
+    "max_tokens",
+    "weak_match_distance",
+    "vector_weight",
+    "rrf_k",
+    "candidate_pool",
+    "top_k",
+    "max_chunk_chars",
+    "min_chunk_chars",
+    "overlap_sentences",
+    "embedding_model",
 }
 
-_INT_FIELDS = {"max_tokens", "rrf_k", "candidate_pool", "top_k", "max_chunk_chars", "min_chunk_chars", "overlap_sentences"}
+_INT_FIELDS = {
+    "max_tokens",
+    "rrf_k",
+    "candidate_pool",
+    "top_k",
+    "max_chunk_chars",
+    "min_chunk_chars",
+    "overlap_sentences",
+}
 _FLOAT_FIELDS = {"weak_match_distance", "vector_weight"}
 
 _ENV_VAR = "QRESP_CONFIG"  # env var pointing at a TOML file

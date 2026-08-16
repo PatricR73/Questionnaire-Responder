@@ -136,9 +136,23 @@ def export_reviewed_workbook(conn, run_id: int, source_path: str, output_path: s
             # answer must not ship, reviewed or not.
             write_answer(ws, row["row_index"], column_map, "", None, "none")
         elif action == "edited":
-            write_answer(ws, row["row_index"], column_map, row["reviewed_answer"] or "", row["vocab_selection"], row["final_confidence"])
+            write_answer(
+                ws,
+                row["row_index"],
+                column_map,
+                row["reviewed_answer"] or "",
+                row["vocab_selection"],
+                row["final_confidence"],
+            )
         else:  # approved
-            write_answer(ws, row["row_index"], column_map, row["drafted_answer"] or "", row["vocab_selection"], row["final_confidence"])
+            write_answer(
+                ws,
+                row["row_index"],
+                column_map,
+                row["drafted_answer"] or "",
+                row["vocab_selection"],
+                row["final_confidence"],
+            )
 
     export_path = _reviewed_export_path(output_path)
     export_path.parent.mkdir(parents=True, exist_ok=True)
@@ -194,14 +208,14 @@ def main():
     reviewed_count = sum(1 for r in rows if r["human_action"])
 
     all_reviewed = total > 0 and reviewed_count == total
-    export_label = "Export reviewed workbook" if all_reviewed else f"Export reviewed workbook ({reviewed_count}/{total} reviewed)"
+    export_label = (
+        "Export reviewed workbook" if all_reviewed else f"Export reviewed workbook ({reviewed_count}/{total} reviewed)"
+    )
     if st.sidebar.button(export_label, disabled=not all_reviewed):
         export_path = export_reviewed_workbook(conn, run_id, run_row["source_path"], run_row["output_path"], rows)
         st.sidebar.success(f"Exported to {export_path}")
 
-    filter_choice = st.sidebar.selectbox(
-        "Filter", ["All", "High", "Low", "Not found", "Error", "Unreviewed"]
-    )
+    filter_choice = st.sidebar.selectbox("Filter", ["All", "High", "Low", "Not found", "Error", "Unreviewed"])
 
     st.progress(reviewed_count / total if total else 0.0)
     st.write(f"**{reviewed_count} / {total} rows reviewed**")

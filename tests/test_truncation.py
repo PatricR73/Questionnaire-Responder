@@ -24,14 +24,16 @@ from src.answer.generate import (
 )
 
 TRUNCATED_TEXT = '{"supported": true, "answer": "This answer is cut off mid-'
-VALID_PAYLOAD_TEXT = json.dumps({
-    "supported": True,
-    "answer": "Complete answer.",
-    "cited_sentences": ["A complete sentence."],
-    "vocab_selection": None,
-    "self_confidence": "high",
-    "polarity": "affirms",
-})
+VALID_PAYLOAD_TEXT = json.dumps(
+    {
+        "supported": True,
+        "answer": "Complete answer.",
+        "cited_sentences": ["A complete sentence."],
+        "vocab_selection": None,
+        "self_confidence": "high",
+        "polarity": "affirms",
+    }
+)
 
 
 def _fake_response(text: str, stop_reason: str = "end_turn", input_tokens: int = 100, output_tokens: int = 50):

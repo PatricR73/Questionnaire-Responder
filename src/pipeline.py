@@ -96,6 +96,7 @@ def _setup_logging(output: Path, verbose: bool, quiet: bool) -> None:
     file_handler.setFormatter(_JsonLinesFormatter())
     log.addHandler(file_handler)
 
+
 # Errors that will fail EVERY row identically and are never worth a per-row retry
 # ladder: a 401 (AuthenticationError), a permission problem, a wrong model name
 # (NotFoundError), or a schema-rejecting 400 (BadRequestError). Caught per-row
@@ -150,17 +151,68 @@ def _add_stub_banner(ws, last_col: int) -> None:
 @cli.command()
 @click.option("--questionnaire", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
 @click.option("--output", type=click.Path(path_type=Path), required=True)
-@click.option("--limit", type=int, default=5, show_default=True, help="Max question rows to process this run. Use 0 for no limit (process every detected question row).")
-@click.option("--only-row", type=int, default=None, help="Process only this single sheet row (overrides --limit); useful for targeted checks.")
+@click.option(
+    "--limit",
+    type=int,
+    default=5,
+    show_default=True,
+    help="Max question rows to process this run. Use 0 for no limit (process every detected question row).",
+)
+@click.option(
+    "--only-row",
+    type=int,
+    default=None,
+    help="Process only this single sheet row (overrides --limit); useful for targeted checks.",
+)
 @click.option("--provider", type=click.Choice(["anthropic", "stub"]), default="anthropic", show_default=True)
-@click.option("--stub-fail-row", type=int, default=None, help="With --provider stub, make that row raise, to exercise per-row error isolation.")
-@click.option("--dry-run", is_flag=True, help="Estimate what a run will cost before starting it: column detection, question reading, and retrieval for every selected row, then real (local) token counts and an estimated price. Makes zero API calls, writes no workbook, and creates no run row.")
-@click.option("--config", type=click.Path(exists=True, dir_okay=False, path_type=Path), default=None, help="TOML file of tuning knobs (see src/config.py). Precedence: CLI flags > QRESP_* env vars > this file > defaults.")
-@click.option("--top-k", type=int, default=None, help="Retrieved chunks per question (highest-precedence override of the config's top_k).")
-@click.option("--verbose", is_flag=True, help="Log per-row detail (including tracebacks) to stderr; also always written to the structured <output>.log.jsonl file.")
-@click.option("--quiet", is_flag=True, help="Suppress INFO progress logging on stderr (errors only); the structured log file is unaffected.")
-def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, provider: str, stub_fail_row: int | None, dry_run: bool, config: Path | None, top_k: int | None, verbose: bool, quiet: bool):
+@click.option(
+    "--stub-fail-row",
+    type=int,
+    default=None,
+    help="With --provider stub, make that row raise, to exercise per-row error isolation.",
+)
+@click.option(
+    "--dry-run",
+    is_flag=True,
+    help="Estimate what a run will cost before starting it: column detection, question reading, and retrieval for every selected row, then real (local) token counts and an estimated price. Makes zero API calls, writes no workbook, and creates no run row.",
+)
+@click.option(
+    "--config",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="TOML file of tuning knobs (see src/config.py). Precedence: CLI flags > QRESP_* env vars > this file > defaults.",
+)
+@click.option(
+    "--top-k",
+    type=int,
+    default=None,
+    help="Retrieved chunks per question (highest-precedence override of the config's top_k).",
+)
+@click.option(
+    "--verbose",
+    is_flag=True,
+    help="Log per-row detail (including tracebacks) to stderr; also always written to the structured <output>.log.jsonl file.",
+)
+@click.option(
+    "--quiet",
+    is_flag=True,
+    help="Suppress INFO progress logging on stderr (errors only); the structured log file is unaffected.",
+)
+def answer(
+    questionnaire: Path,
+    output: Path,
+    limit: int,
+    only_row: int | None,
+    provider: str,
+    stub_fail_row: int | None,
+    dry_run: bool,
+    config: Path | None,
+    top_k: int | None,
+    verbose: bool,
+    quiet: bool,
+):
     from src.config import load_config
+
     _setup_logging(output, verbose=verbose, quiet=quiet)
     if verbose and quiet:
         raise click.ClickException("--verbose and --quiet are mutually exclusive.")
@@ -181,7 +233,9 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
 
     if provider == "anthropic" and not dry_run:
         if not os.environ.get("ANTHROPIC_API_KEY"):
-            raise click.ClickException("ANTHROPIC_API_KEY not set — export it before running with --provider anthropic (every row would fail identically). Use --provider stub if you want to test without a key.")
+            raise click.ClickException(
+                "ANTHROPIC_API_KEY not set — export it before running with --provider anthropic (every row would fail identically). Use --provider stub if you want to test without a key."
+            )
         answerer = AnthropicAnswerer(config=cfg)
     else:
         answerer = StubAnswerer(fail_row=stub_fail_row, weak_match_distance=cfg.weak_match_distance)
@@ -210,7 +264,8 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     conn = db.connect()
     vector_store = VectorStore(model_name=cfg.embedding_model)
     searcher = HybridSearcher(
-        conn, vector_store,
+        conn,
+        vector_store,
         vector_weight=cfg.vector_weight,
         rrf_k=cfg.rrf_k,
         candidate_pool=cfg.candidate_pool,
@@ -228,7 +283,9 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     total_cache_read_tokens = 0
     total_cache_creation_tokens = 0
     consecutive_errors = 0
-    caught_exc = None  # set on the error path so the structured log can carry the traceback after the except block exits
+    caught_exc = (
+        None  # set on the error path so the structured log can carry the traceback after the except block exits
+    )
 
     try:
         with open(jsonl_path, "a") as jsonl_file:
@@ -237,7 +294,9 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                 try:
                     sub_question = split_question(q.question_text)[0]
                     evidence = searcher.search(sub_question, top_k=cfg.top_k)
-                    result = answerer.answer_question(sub_question, evidence, column_map.vocab_values, row_index=q.row_index)
+                    result = answerer.answer_question(
+                        sub_question, evidence, column_map.vocab_values, row_index=q.row_index
+                    )
 
                     if result.status == AnswerStatus.NOT_FOUND:
                         final_confidence = "none"
@@ -268,7 +327,7 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                         f"repeat for every row (check the API key, model name, and request schema). "
                         f"Everything processed so far is saved to {output}."
                     ) from exc
-                except Exception as exc:  # noqa: BLE001 — per-row isolation is the point
+                except Exception as exc:
                     consecutive_errors += 1
                     caught_exc = exc
                     # A row that burned API calls and then raised used to report zero
@@ -328,10 +387,14 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                     "error": error_message,
                 }
                 if error_message is None:
-                    log.debug("row %s: %s (%.1fs)", q.row_index, final_confidence, elapsed, extra={"row_data": row_data})
+                    log.debug(
+                        "row %s: %s (%.1fs)", q.row_index, final_confidence, elapsed, extra={"row_data": row_data}
+                    )
                 else:
                     log.error(
-                        "row %s: ERROR — %s", q.row_index, error_message,
+                        "row %s: ERROR — %s",
+                        q.row_index,
+                        error_message,
                         exc_info=(type(caught_exc), caught_exc, caught_exc.__traceback__) if caught_exc else True,
                         extra={"row_data": row_data},
                     )
@@ -339,27 +402,40 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
 
                 write_answer(ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence)
                 db.record_answer(
-                    conn, run_id, q.row_index, q.question_text, sub_question,
-                    answer_text, vocab_selection, self_confidence, final_confidence, cited_chunk_ids,
+                    conn,
+                    run_id,
+                    q.row_index,
+                    q.question_text,
+                    sub_question,
+                    answer_text,
+                    vocab_selection,
+                    self_confidence,
+                    final_confidence,
+                    cited_chunk_ids,
                     polarity=polarity,
                 )
                 db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
 
-                jsonl_file.write(json.dumps({
-                    # run_id + timestamp on every record: the sidecar opens in append
-                    # mode, and without them two runs to the same --output interleave
-                    # into one file with no way to separate them (P20).
-                    "run_id": run_id,
-                    "ts": datetime.now(timezone.utc).isoformat(),
-                    "row_index": q.row_index,
-                    "question_text": q.question_text,
-                    "final_confidence": final_confidence,
-                    "polarity": polarity,
-                    "provider": provider,
-                    "answer": answer_text,
-                    "error": error_message,
-                    "elapsed_seconds": round(elapsed, 2),
-                }) + "\n")
+                jsonl_file.write(
+                    json.dumps(
+                        {
+                            # run_id + timestamp on every record: the sidecar opens in append
+                            # mode, and without them two runs to the same --output interleave
+                            # into one file with no way to separate them (P20).
+                            "run_id": run_id,
+                            "ts": datetime.now(timezone.utc).isoformat(),
+                            "row_index": q.row_index,
+                            "question_text": q.question_text,
+                            "final_confidence": final_confidence,
+                            "polarity": polarity,
+                            "provider": provider,
+                            "answer": answer_text,
+                            "error": error_message,
+                            "elapsed_seconds": round(elapsed, 2),
+                        }
+                    )
+                    + "\n"
+                )
                 jsonl_file.flush()
 
                 counts[final_confidence] += 1
@@ -381,7 +457,10 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     )
     log.info(
         "answer run finished: answered=%d flagged_low=%d not_found=%d error=%d",
-        n_answered, counts["low"], counts["none"], counts["error"],
+        n_answered,
+        counts["low"],
+        counts["none"],
+        counts["error"],
     )
     if provider == "anthropic" and (total_input_tokens or total_output_tokens):
         uncached_input = total_input_tokens - total_cache_read_tokens
@@ -441,10 +520,20 @@ def _dry_run_cost_estimate(questions: list, all_questions: list, column_map) -> 
 
     click.echo("Dry run — no API calls, nothing written:")
     click.echo("  rows detected: " + str(len(all_questions)) + "   rows selected: " + str(len(questions)))
-    click.echo("  estimated input tokens: " + str(total_input) + " (system prompt " + str(system_tokens) +
-               " tokens per row + retrieved chunks + question, counted with the local Claude tokenizer)")
-    click.echo("  estimated output tokens: " + str(output_estimate) +
-               " (observed avg " + str(OUTPUT_TOKENS_PER_ANSWERED_QUESTION) + " per answered question)")
+    click.echo(
+        "  estimated input tokens: "
+        + str(total_input)
+        + " (system prompt "
+        + str(system_tokens)
+        + " tokens per row + retrieved chunks + question, counted with the local Claude tokenizer)"
+    )
+    click.echo(
+        "  estimated output tokens: "
+        + str(output_estimate)
+        + " (observed avg "
+        + str(OUTPUT_TOKENS_PER_ANSWERED_QUESTION)
+        + " per answered question)"
+    )
     click.echo("  estimated cost: $" + f"{cost:.4f}" + " (placeholder Sonnet-class pricing; see _estimate_cost)")
 
 
@@ -466,8 +555,8 @@ def _current_run_config(cfg) -> dict:
             ["git", "rev-parse", "HEAD"], cwd=repo_root, stderr=subprocess.DEVNULL, text=True
         ).strip()
         git_dirty = bool(subprocess.check_output(["git", "status", "--porcelain"], cwd=repo_root, text=True).strip())
-    except Exception:  # noqa: BLE001 — not in a git repo or git unavailable: record the gap, don't crash
-        pass
+    except Exception as exc:  # noqa: BLE001 — not in a git repo or git unavailable: record the gap, don't crash
+        log.debug("git revision unavailable: %s", exc)
 
     snapshot = cfg.as_dict()
     snapshot["git_sha"] = git_sha
