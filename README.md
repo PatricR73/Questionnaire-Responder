@@ -6,9 +6,10 @@ prospective enterprise customers and need a fast, honest first draft before a hu
 reviews it.
 **What it costs you today:** a few cents of Claude API spend per question row, a CLI
 and (optionally) a local Streamlit review screen — no hosting, no account, no
-subscription. Measured 65% of a 20-question CAIQ set usable as-is; every other row is
-either flagged for review or an honest "not found," never a confident wrong answer.
-See Results below for the real numbers.
+subscription. Measured 58% structural match on a 24-question set (20 real CAIQ
+questions plus an adversarial subset); an honest "not found" beats a fabrication, and
+the adversarial subset's job is to catch fabrications when they happen — it caught
+two. See Results below for the real numbers.
 
 <video controls width="700" poster="docs/demo.webm">
   <source src="docs/demo.webm" type="video/webm">
@@ -51,14 +52,25 @@ flowchart LR
 
 ### Results at a glance
 
-Measured against 20 real security-questionnaire questions with known-correct answers
-(full breakdown and methodology in [`EVAL.md`](EVAL.md)):
+Measured against 24 security-questionnaire questions with known-correct answers —
+20 real CAIQ v4.0.2 questions plus an adversarial subset of 4 written to stress the
+no-fabrication guarantee (full breakdown and methodology in [`EVAL.md`](EVAL.md),
+every tuning pass in [`TUNING_LOG.md`](fixtures/eval/TUNING_LOG.md)):
 
 | Outcome | Count |
 |---|---|
-| ✅ Usable (correct, ready to send or flagged for a quick check) | 13 / 20 (65%) |
-| ⚠️ Confidently wrong / fabricated | **0 / 20** |
-| 🚫 Scored "wrong" because it honestly abstained | 7 / 20 |
+| ✅ Structural match (status + polarity vs. expected label) | 14 / 24 (58%) |
+| ⚠️ Fabricated (asserted a control the evidence does not document) | **2 / 24** |
+| 🚫 Wrong for another reason (honest abstention, polarity mismatch) | 8 / 24 |
+
+The two fabrications are the point of the adversarial subset: `ADV-02` (off-site
+backup storage) and `ADV-04` (an IGA platform for access reviews) are plausibly
+*implied* by the evidence but not documented, and the model answered both as if they
+were. The no-fabrication guarantee, previously only observed to hold, failed its
+first active stress test — which is exactly what the adversarial subset exists to
+find. The usable/needs-editing/wrong hand-scores published earlier (13/20 usable on
+the original 20) predate the adversarial subset and await a blind re-score per the
+scoring protocol in [`LABELING_GUIDE.md`](fixtures/eval/LABELING_GUIDE.md).
 
 That 7/20 is scored as "wrong" against a strict correct/needs-editing/wrong rubric
 even though every one of those rows is a safe, honest gap rather than a fabrication —
@@ -73,15 +85,19 @@ every output requires human review before it goes to a customer.
 
 ## Eval results
 
-Measured against 20 real CAIQ v4.0.2 questions with known-correct answers, hand-scored
-against a strict usable/needs-editing/wrong rubric: **65% usable, 0% needs-editing, 35%
-wrong** — and every one of those "wrong" rows is an honest abstention or a named,
-verified retrieval gap, never a confident fabrication (that failure mode measured at
-0% both before and after tuning). Two tuning passes were run against this baseline
-following a diagnose-from-data-first protocol; one was adopted (RRF fusion reweighting,
-12/0/8 → 13/0/7), the other (raising the confidence threshold) was rejected because the
-eval data shows no threshold value rescues the remaining failures without also breaking
-a question that must stay abstained.
+The measured baseline, on the current 24-question set, is **14/24 structural match**
+(status + polarity vs. expected label), deterministic across three runs. The
+adversarial subset (P33) — questions whose answers are plausibly implied by the
+evidence but not documented — caught its first fabrications: `ADV-02` (off-site
+backup storage) and `ADV-04` (an IGA platform for access reviews) were answered as
+documented facts. The earlier 20-question hand-scores (65% usable, 0% fabricated)
+predate that subset and await a blind re-score per the scoring protocol in
+[`LABELING_GUIDE.md`](fixtures/eval/LABELING_GUIDE.md). The historical tuning
+passes — RRF fusion reweighting (12/0/8 → 13/0/7, adopted) and the confidence
+threshold (rejected, because no value rescues the failures without also breaking a
+question that must stay abstained) — are documented in
+[`TUNING_LOG.md`](fixtures/eval/TUNING_LOG.md), alongside the retrieval-side
+measurements of the P8/P10/P11/P12 changes.
 
 Reproduce these numbers yourself with `python fixtures/eval/run_eval.py`. Full
 methodology, the per-question failure taxonomy, the threshold-tuning data, three real

@@ -105,3 +105,80 @@ remaining wrong cases split between the exhausted confidence threshold (Pass 1) 
 new, distinct failure mode: the model declining to answer from evidence it already has
 in context (`BCR-03.1`, `SEF-06.1`, `BCR-08.2`). That's a generation-prompt question,
 not a retrieval question — a different tuning pass than either of the first two.
+## Pass 3 — bge query instruction prefix (`src/store/vectorstore.py`)
+
+**Result: code landed; generation-side before/after BLOCKED on API credits.**
+
+BAAI's bge-*-en-v1.5 models are trained with an asymmetric setup: the query side must
+carry "Represent this sentence for searching relevant passages: " while passages stay
+unprefixed. Applied on the query path only.
+
+- **Baseline (before, 24-question set, 3 repeats):** structural match **14/24**,
+  deterministic across runs. **The adversarial subset (P33) caught its first
+  fabrications: `ADV-02` (off-site backup storage) and `ADV-04` (IGA-platform
+  access reviews) came back ANSWERED** — both plausibly implied by the evidence but
+  not documented, exactly the trap they were built to spring. The no-fabrication
+  guarantee, previously only observed to hold, failed its first active stress test.
+  No polarity inversions.
+- **Retrieval-side (local, no API):** 5/24 → 6/24 questions retrieve a best chunk
+  at cosine distance ≤ 0.3 with the prefix; average best distance 0.3515 → 0.3547.
+  Marginal on this 14-chunk corpus — the prefix's recall benefit shows at scale.
+- **Generation-side after:** not measured — the API credit balance ran out during
+  the re-run. (The P13 fatal-error handling aborted the run cleanly on the first
+  row rather than burning all 24, which is the behavior it was built for.) The
+  before/after structural comparison is pending a credit top-up and a re-run.
+
+## Pass 4 — BM25 zero-score filter, three ways (`src/retrieval/hybrid_search.py`)
+
+**Result: filter kept; the VECTOR_WEIGHT question deferred — the three-way
+generation comparison is blocked on API credits.**
+
+Measured locally (retrieval side, no API), the question count whose best chunk lands
+at cosine distance ≤ 0.3 across the 24-question set:
+
+| config | retrievable | avg best distance |
+|---|---|---|
+| (a) filter on, VECTOR_WEIGHT = 2.0 | 5/24 | 0.3515 |
+| (b) filter on, VECTOR_WEIGHT = 1.0 | 5/24 | 0.3519 |
+| (c) control (no filter), VECTOR_WEIGHT = 2.0 | 5/24 | 0.3515 |
+
+The filter is behavior-neutral on this corpus because it is smaller than the
+candidate pool (14 chunks < CANDIDATE_POOL = 20), so zero-score chunks never entered
+the pool anyway — it will matter at scale, and it is correct to keep. The
+task's decision rule — if (b) matches or beats (a), remove the weighting — needs the
+generation-side structural scores, which require API credits; the earlier
+VECTOR_WEIGHT = 2.0 tuning pass (Pass 2) may have been compensating for the
+zero-score credit that this filter removes, but that conclusion needs the data.
+
+## Pass 5 — cross-encoder reranker (`src/retrieval/reranker.py`, flag off by default)
+
+**Result: flag landed; generation-side with/without BLOCKED on API credits.**
+
+Retrieval side (local, no API): reranker off → 5/24 retrievable, avg best 0.3515,
+avg top-1 0.3694; reranker on → 4/24 retrievable, avg best 0.3660, avg top-1 0.3991.
+On this 14-chunk corpus the cross-encoder re-ordering slightly degrades the
+distance proxy (it ranks by relevance, which can push the nearest-distance chunk out
+of top-5). The rerank score is carried on RetrievedChunk and NOT wired into
+cross_check_confidence, per the commit's scope; the confidence change stays a
+separate decision with its own data. The with/without generation comparison is
+pending credits.
+
+## Pass 6 — chunk ceiling and sentence overlap (`src/ingest/chunk.py`)
+
+**Result: code landed; generation-side before/after BLOCKED on API credits.**
+
+Retrieval side (local, no API), old chunker vs new: both 5/24 retrievable, avg best
+0.3515 — retrieval-equivalent on this corpus. The chunking change's value is not the
+distance: it is the guarantee that no sentence is severed at a chunk boundary (the
+verbatim citation-grounding check depends on that) and that no chunk exceeds the
+ceiling. Those are enforced by tests, not by the eval; the generation-side
+structural comparison is pending credits.
+
+## Blocked-work note
+
+The generation-side before/after comparisons for Passes 3-6 all require API credits,
+which ran out mid-Pass-3. The retrieval-side measurements above are recorded so the
+passes are not empty; each needs a re-run (`python fixtures/eval/run_eval.py
+--repeats 3`) with a positive credit balance to complete. The completed baseline —
+24 questions, 14/24 structural match, ADV-02/ADV-04 fabrications — is the reference
+point everything else compares against.

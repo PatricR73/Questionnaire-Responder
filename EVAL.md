@@ -41,34 +41,42 @@ every full answer for hand-scoring, and flags a `NOT_FOUND` question coming back
 compute usable/needs-editing/wrong itself, since that's a deliberately hand-scored
 judgment call (see the methodology above), not something to automate.
 
-## The number: 60% → 65% usable, honestly
+## The number: 60% → 65% usable, honestly — then the adversarial subset changed the picture
 
-Every one of the 20 answers was read — not pattern-matched against the label — and
-scored `usable` (correct and ready to send, possibly flagged for review as designed),
-`needs-editing` (right idea, wrong in a way a human would have to fix), or `wrong`
-(silently missed real evidence, or answered something it shouldn't have). This is the
-same rubric behind the README's "Results at a glance" table — `wrong` here includes
-both the honest abstentions and any genuinely bad answer, which is why that table
-calls out that abstentions count against the score even though none of them is a
-fabrication.
+The 60% → 65% numbers below are the historical hand-scored baseline on the original
+20-question set. The corpus has since grown to 24 questions with an adversarial
+subset (P33), and the current measured baseline is the structural match:
+**14/24 across three deterministic runs** — with two of the four adversarial
+questions answered as documented facts. That is the first measured breach of the
+no-fabrication guarantee, and it changes what the honest summary looks like:
 
-| | Baseline | After tuning |
+| | Historical (20 questions, hand-scored) | Current (24 questions, structural) |
 |---|---|---|
-| usable | 12 (60%) | 13 (65%) |
-| needs-editing | 0 | 0 |
-| wrong | 8 (40%) | 7 (35%) |
+| usable / structural match | 13 (65%) | 14 / 24 (58%) |
+| needs-editing | 0 | n/a (pending blind re-score) |
+| wrong | 7 (35%) | 8 / 24 — of which **2 are fabrications** (ADV-02, ADV-04) |
 
-**The 0 in needs-editing is not a rounding error, and it's worth reading correctly.**
-This system's failure mode is binary: it either produces a complete, accurate,
-appropriately-hedged answer, or it silently says nothing. It doesn't produce answers
-that are subtly wrong, half-right, or confidently overreaching — every wrong case
-below is a *missing* answer, never a *bad* one. That's a direct, measured consequence
-of the no-fabrication design in the README, and it's a meaningfully safer failure
-profile than a system that fails by being wrong in ways a reviewer might not catch.
+The two fabrications are not a regression in the model's behavior; they are the
+adversarial subset doing its job. The guarantee was previously only *observed* to
+hold (no question actively tried to break it); ADV-02 (off-site backup storage) and
+ADV-04 (an IGA platform for access reviews) are plausibly implied by the evidence
+but not documented, and the model answered both. Any claim of "0% fabricated" now
+comes with the qualifier "on the questions that were actively trying to catch one —
+two of four slipped through."
 
-**65% is not a high number, and this document is not going to dress it up as one.**
-The value of this baseline isn't the percentage — it's that every one of the 7
-remaining wrong answers has a specific, named, verified cause, not a shrug:
+**The 0 in needs-editing was not a rounding error on the historical set, and it is
+still worth reading correctly as far as it went.** This system's failure mode was
+binary: it either produced a complete, accurate, appropriately-hedged answer, or it
+silently said nothing. The adversarial subset shows the binary can fail in the other
+direction too — confidently asserting an implied control as documented — which is
+precisely why the subset exists. The usable/needs-editing/wrong hand-scores for the
+24-question set await a blind re-score per the scoring protocol in
+`fixtures/eval/LABELING_GUIDE.md`.
+
+**65% was not a high number then, and 58% is not one now — and this document is not
+going to dress either up.**
+The value of a baseline isn't the percentage — it's that every wrong answer has a
+specific, named, verified cause, not a shrug:
 
 | Question | Cause | Fixable how |
 |---|---|---|
