@@ -103,6 +103,14 @@ quoted, not synthesized.
 You will be given the question and a set of evidence passages, each labeled with its source document \
 and location. Use only those passages."""
 
+# The system prompt is identical for every row of a run (~1.5k tokens), so it is sent
+# as an explicit block list marked for ephemeral prompt caching: the API serves it
+# from cache on rows 2..N instead of re-sending it. Verified live that the API
+# accepts the block form and reports cache_creation/cache_read_input_tokens in usage.
+# The same prompt text as the string form, so SYSTEM_PROMPT stays the single source
+# of truth for the contract it documents.
+_SYSTEM_BLOCKS = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
+
 
 @dataclass
 class AnswerDraft:
@@ -114,6 +122,12 @@ class AnswerDraft:
     polarity: str | None  # "affirms" | "denies" | "partial" when supported, else None
     input_tokens: int
     output_tokens: int
+    # Cache accounting (see _SYSTEM_BLOCKS): cache_read_input_tokens are served from
+    # the prompt cache (much cheaper than re-sending); cache_creation_input_tokens
+    # are the first-write cost. Carried so the run summary can report money actually
+    # spent instead of the nominal input total.
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
 
 
 REQUIRED_ANSWER_KEYS = {"supported", "answer", "cited_sentences", "vocab_selection", "self_confidence", "polarity"}
@@ -264,7 +278,7 @@ def generate_answer(
             "model": MODEL,
             "max_tokens": max_tokens,
             "temperature": TEMPERATURE,
-            "system": SYSTEM_PROMPT,
+            "system": _SYSTEM_BLOCKS,
             "output_config": {"format": {"type": "json_schema", "schema": build_answer_schema(vocab_values)}},
             "messages": [{"role": "user", "content": user_content}],
         }
@@ -311,6 +325,20 @@ def generate_answer(
     response = call(base_message)
     total_input_tokens = response.usage.input_tokens
     total_output_tokens = response.usage.output_tokens
+    total_cache_read = getattr(response.usage, "cache_read_input_tokens", 0) or 0
+    total_cache_creation = getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+
+    def record_usage(exc: BaseException) -> BaseException:
+        """Attach the tokens spent on this row to the exception so the pipeline's
+        error path can report real cost — a row that burns two API calls and then
+        raises used to report zero tokens."""
+        exc._row_usage = {
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "cache_read_input_tokens": total_cache_read,
+            "cache_creation_input_tokens": total_cache_creation,
+        }
+        return exc
 
     try:
         payload = _extract_answer_payload(response, MAX_TOKENS)
@@ -322,7 +350,12 @@ def generate_answer(
         response = call(base_message, max_tokens=TRUNCATION_RETRY_MAX_TOKENS)
         total_input_tokens += response.usage.input_tokens
         total_output_tokens += response.usage.output_tokens
-        payload = _extract_answer_payload(response, TRUNCATION_RETRY_MAX_TOKENS)
+        total_cache_read += getattr(response.usage, "cache_read_input_tokens", 0) or 0
+        total_cache_creation += getattr(response.usage, "cache_creation_input_tokens", 0) or 0
+        try:
+            payload = _extract_answer_payload(response, TRUNCATION_RETRY_MAX_TOKENS)
+        except AnswerTruncatedError as exc:
+            raise record_usage(exc)
     except MalformedAnswerError as first_error:
         # One corrective retry, not more — a schema violation this strict output mode
         # still let through is rare (see _ANSWER_SCHEMA's docstring note); a second
@@ -331,12 +364,16 @@ def generate_answer(
         response = call(base_message + _CORRECTIVE_SUFFIX)
         total_input_tokens += response.usage.input_tokens
         total_output_tokens += response.usage.output_tokens
+        total_cache_read += getattr(response.usage, "cache_read_input_tokens", 0) or 0
+        total_cache_creation += getattr(response.usage, "cache_creation_input_tokens", 0) or 0
         try:
             payload = _extract_answer_payload(response, MAX_TOKENS)
         except MalformedAnswerError as second_error:
-            raise MalformedAnswerError(
-                f"Model response for {question!r} did not parse after one corrective retry. "
-                f"First attempt: {first_error} Retry attempt: {second_error}"
+            raise record_usage(
+                MalformedAnswerError(
+                    f"Model response for {question!r} did not parse after one corrective retry. "
+                    f"First attempt: {first_error} Retry attempt: {second_error}"
+                )
             ) from second_error
 
     return AnswerDraft(
@@ -348,4 +385,6 @@ def generate_answer(
         polarity=payload["polarity"],
         input_tokens=total_input_tokens,
         output_tokens=total_output_tokens,
+        cache_read_input_tokens=total_cache_read,
+        cache_creation_input_tokens=total_cache_creation,
     )

@@ -61,6 +61,11 @@ class AnswerResult:
     polarity: str | None = None  # AnswerPolarity.AFFIRMS | DENIES | PARTIAL when ANSWERED, else None
     input_tokens: int = 0
     output_tokens: int = 0
+    # Cache accounting carried from the API usage so the run summary can break out
+    # cached vs uncached input tokens (see generate._SYSTEM_BLOCKS). StubAnswerer
+    # leaves them at 0 — the numbers come from the API.
+    cache_read_input_tokens: int = 0
+    cache_creation_input_tokens: int = 0
 
 
 class Answerer(ABC):
@@ -124,6 +129,8 @@ class AnthropicAnswerer(Answerer):
                 vocab_selection=None,
                 input_tokens=draft.input_tokens,
                 output_tokens=draft.output_tokens,
+                cache_read_input_tokens=draft.cache_read_input_tokens,
+                cache_creation_input_tokens=draft.cache_creation_input_tokens,
             )
 
         return AnswerResult(
@@ -136,6 +143,8 @@ class AnthropicAnswerer(Answerer):
             polarity=draft.polarity,
             input_tokens=draft.input_tokens,
             output_tokens=draft.output_tokens,
+            cache_read_input_tokens=draft.cache_read_input_tokens,
+            cache_creation_input_tokens=draft.cache_creation_input_tokens,
         )
 
 

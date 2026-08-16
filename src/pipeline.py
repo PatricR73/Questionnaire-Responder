@@ -141,6 +141,8 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     counts = {"high": 0, "low": 0, "none": 0, "error": 0}
     total_input_tokens = 0
     total_output_tokens = 0
+    total_cache_read_tokens = 0
+    total_cache_creation_tokens = 0
     consecutive_errors = 0
 
     try:
@@ -168,6 +170,8 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                     error_message = None
                     total_input_tokens += result.input_tokens
                     total_output_tokens += result.output_tokens
+                    total_cache_read_tokens += result.cache_read_input_tokens
+                    total_cache_creation_tokens += result.cache_creation_input_tokens
                 except FATAL_ERRORS as exc:
                     # Wrong key, wrong model, or a schema-rejecting request: the same
                     # failure for every remaining row. Abort now (finally saves
@@ -181,6 +185,16 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                     ) from exc
                 except Exception as exc:  # noqa: BLE001 — per-row isolation is the point
                     consecutive_errors += 1
+                    # A row that burned API calls and then raised used to report zero
+                    # tokens. generate_answer attaches the real usage to the exception
+                    # (see generate.record_usage), so the run summary reflects money
+                    # actually spent even on failed rows.
+                    row_usage = getattr(exc, "_row_usage", None)
+                    if row_usage:
+                        total_input_tokens += row_usage["input_tokens"]
+                        total_output_tokens += row_usage["output_tokens"]
+                        total_cache_read_tokens += row_usage["cache_read_input_tokens"]
+                        total_cache_creation_tokens += row_usage["cache_creation_input_tokens"]
                     if consecutive_errors >= CONSECUTIVE_ERROR_LIMIT:
                         click.echo(f"  row {q.row_index}: ERROR — {exc}")
                         raise click.ClickException(
@@ -240,11 +254,31 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
         f"Wrote {output} (+ {jsonl_path.name}). "
         f"answered={n_answered} flagged_low={counts['low']} not_found={counts['none']} error={counts['error']}"
     )
-    if provider == "anthropic" and n_answered:
+    if provider == "anthropic" and (total_input_tokens or total_output_tokens):
+        uncached_input = total_input_tokens - total_cache_read_tokens
         click.echo(
             f"Tokens: {total_input_tokens} in / {total_output_tokens} out "
-            f"(avg {total_input_tokens // n_answered} in / {total_output_tokens // n_answered} out per question)"
+            f"(avg {total_input_tokens // n_answered} in / {total_output_tokens // n_answered} out per answered question)"
         )
+        click.echo(
+            f"  of which {uncached_input} uncached in, {total_cache_read_tokens} cache-read in, "
+            f"{total_cache_creation_tokens} cache-created in"
+        )
+        click.echo(f"  estimated cost: ${_estimate_cost(total_input_tokens, total_output_tokens):.4f}")
+
+
+def _estimate_cost(input_tokens: int, output_tokens: int) -> float:
+    """Rough dollar estimate for the tokens reported this run.
+
+    Placeholder Sonnet-class pricing ($3/M input, $15/M output) — the true numbers
+    depend on the current model's published rate card and any caching discounts,
+    so this is an order-of-magnitude estimate for capacity planning, not a bill.
+    Cache-read input tokens are billed at a fraction of fresh input tokens; the
+    estimate conservatively prices everything at the fresh rate, which
+    overestimates once prompt caching engages."""
+    input_cost = input_tokens / 1_000_000 * 3.0
+    output_cost = output_tokens / 1_000_000 * 15.0
+    return input_cost + output_cost
 
 
 if __name__ == "__main__":
