@@ -165,6 +165,15 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
     if verbose and quiet:
         raise click.ClickException("--verbose and --quiet are mutually exclusive.")
 
+    # Guard against clobbering the customer's source workbook: --output resolving
+    # to the same file as --questionnaire (directly or via a symlink — resolve()
+    # follows symlinks) would overwrite it in place, unrecoverably.
+    if questionnaire.resolve() == output.resolve():
+        raise click.ClickException(
+            f"--output {output} is the same file as --questionnaire {questionnaire} — "
+            f"refusing to overwrite the source workbook in place. Choose a different --output."
+        )
+
     cli_overrides = {}
     if top_k is not None:
         cli_overrides["top_k"] = top_k
@@ -337,6 +346,11 @@ def answer(questionnaire: Path, output: Path, limit: int, only_row: int | None, 
                 db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
 
                 jsonl_file.write(json.dumps({
+                    # run_id + timestamp on every record: the sidecar opens in append
+                    # mode, and without them two runs to the same --output interleave
+                    # into one file with no way to separate them (P20).
+                    "run_id": run_id,
+                    "ts": datetime.now(timezone.utc).isoformat(),
                     "row_index": q.row_index,
                     "question_text": q.question_text,
                     "final_confidence": final_confidence,
