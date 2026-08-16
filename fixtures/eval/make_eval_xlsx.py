@@ -30,7 +30,7 @@ ws.title = "Eval Questions"
 wb.properties.title = "CAIQ v4.0.2 eval fixture — 20 questions"
 wb.properties.description = (
     "Question text quoted verbatim from the Cloud Security Alliance CAIQ v4.0.2 "
-    "under fair use with attribution — see fixtures/eval/LABELING_GUIDE.md. "
+    "permitted by the instrument's license clause (quote portions with attribution to the CSA Cloud Controls Matrix Version 4.0.2) — see fixtures/eval/LABELING_GUIDE.md, which quotes the clause verbatim. "
     "Generated from questions.json by make_eval_xlsx.py; do not hand-edit."
 )
 ws["A1"].comment = Comment(

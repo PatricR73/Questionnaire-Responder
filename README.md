@@ -277,6 +277,8 @@ as an actual questionnaire workbook, generated from `questions.json` by
 `make_eval_xlsx.py` — lets the eval set run through the real CLI, and doubles as a
 20-row demo questionnaire instead of the 6-row sample), and `run_eval.py` (the
 reproducible command behind the results in [`EVAL.md`](EVAL.md)). The eval questions
-are quoted verbatim from the real CSA CAIQ v4.0.2 instrument under fair use with
-attribution — see the licensing section in `LABELING_GUIDE.md` for what is and isn't
-safe to commit from that source.
+are quoted verbatim from the real CSA CAIQ v4.0.2 instrument, permitted by the
+instrument's own license clause (quote portions with attribution to the Cloud
+Security Alliance Cloud Controls Matrix Version 4.0.2; see the licensing section in
+`LABELING_GUIDE.md`, which quotes the clause verbatim) — not an asserted fair-use
+defense.

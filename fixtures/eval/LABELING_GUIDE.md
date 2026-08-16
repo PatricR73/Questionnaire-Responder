@@ -303,12 +303,29 @@ the way. Fixture row shape: `{source_id, question_text, expected_label, notes}` 
 `notes` is where the calibration/compound-vs-scope-mismatch/governance-gap flavor and
 any labeling rationale goes.
 
-**Licensing: quote a small selection, never commit the full source pool.** CSA's terms
-prohibit redistributing CCM/CAIQ (the one exception — a CSP redistributing its own
-filled-out copy — doesn't apply here), but permit quoting portions under fair use with
-attribution to CSA. The ~20 selected questions with control IDs and attribution are
-defensible fair-use quotation; a near-complete reproduction of the instrument (e.g. the
-full ~260-question extracted pool used to select from) is not. Do the full-pool
+**Licensing: quote a small selection, never commit the full source pool.** The CAIQ
+v4.0.2 workbook carries its license in the Introduction sheet; the clause that covers
+what is committed here, quoted verbatim (© Copyright 2019-2021 Cloud Security
+Alliance):
+
+> You may download, store, display on your computer, view, print, and link to the
+> Cloud Security Alliance "Cloud Controls Matrix (CCM) Version 4.0.2" at
+> http://www.cloudsecurityalliance.org subject to the following: (a) the Cloud
+> Controls Matrix v4.0.2 may be used solely for your personal, informational,
+> non-commercial use; (b) the Cloud Controls Matrix v4.0.2 may not be modified or
+> altered in any way; (c) the Cloud Controls Matrix v4.0.2 may not be redistributed;
+> and (d) the trademark, copyright or other notices may not be removed. **You may
+> quote portions of the Cloud Controls Matrix v4.0.2 as permitted by the Fair Use
+> provisions of the United States Copyright Act, provided that you attribute the
+> portions to the Cloud Security Alliance Cloud Controls Matrix Version 4.0.2.** If
+> you are interested in obtaining a license to this material for other usages not
+> addresses in the copyright notice, please contact info@cloudsecurityalliance.org.
+
+This was verified by reading the actual v4.0.2 workbook's Introduction sheet (not
+inferred or paraphrased), and it matches what the repo already assumed: the ~20
+verbatim questions with control IDs and attribution are a quoted selection, which the
+clause explicitly permits; a near-complete reproduction of the instrument (e.g. the
+full ~261-question extracted pool used to select from) would not be. Do the full-pool
 extraction and selection in a scratch location outside the repo, and never commit
 anything beyond the selected subset. (No AWS or other vendor's *answers* should ever
 appear anywhere in this repo either, extracted or otherwise — that's a separate,
