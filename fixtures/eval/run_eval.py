@@ -181,6 +181,11 @@ def print_run_detail(rows: list[dict], not_found_regressions: list[str]) -> None
 
 
 def main():
+    # stdout is block-buffered when redirected to a file, so the parent's progress
+    # lines interleave confusingly with the (OS-unbuffered) pipeline subprocess
+    # output; force line buffering so a logged run reads in order.
+    sys.stdout.reconfigure(line_buffering=True)
+
     parser = argparse.ArgumentParser(description=__doc__.split("Usage")[0])
     parser.add_argument(
         "--repeats",
