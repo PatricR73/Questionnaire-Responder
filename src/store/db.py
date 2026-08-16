@@ -5,7 +5,9 @@ import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 
-DEFAULT_DB_PATH = Path("out") / "store.db"
+from src.data_dir import data_dir
+
+DEFAULT_DB_PATH = data_dir() / "store.db"
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS chunks (
@@ -51,7 +53,15 @@ CREATE TABLE IF NOT EXISTS audit_log (
 """
 
 
-def connect(db_path: Path = DEFAULT_DB_PATH) -> sqlite3.Connection:
+def connect(db_path: Path | None = None) -> sqlite3.Connection:
+    """Open the store, creating schema if needed.
+
+    Defaults to data_dir()/store.db — resolved at call time, not import time, so a
+    QRESP_DATA_DIR change (or a foreign cwd) takes effect for the next connect.
+    Keeping an explicit-path override is what lets tests and the eval harness point
+    at an isolated database."""
+    if db_path is None:
+        db_path = data_dir() / "store.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row

@@ -2,7 +2,8 @@
 
 from pathlib import Path
 
-DEFAULT_PERSIST_DIR = Path("out") / "chroma"
+from src.data_dir import data_dir
+
 DEFAULT_COLLECTION = "evidence_chunks"
 DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 
@@ -10,10 +11,15 @@ DEFAULT_MODEL = "BAAI/bge-small-en-v1.5"
 class VectorStore:
     def __init__(
         self,
-        persist_dir: Path = DEFAULT_PERSIST_DIR,
+        persist_dir: Path | None = None,
         collection_name: str = DEFAULT_COLLECTION,
         model_name: str = DEFAULT_MODEL,
     ):
+        if persist_dir is None:
+            persist_dir = data_dir() / "chroma"
+        # persist_dir is resolved at call time (not import time) so a
+        # QRESP_DATA_DIR change or a foreign cwd takes effect for the next store —
+        # same contract as db.connect().
         import chromadb
         from chromadb.utils import embedding_functions
 
