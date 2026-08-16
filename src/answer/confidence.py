@@ -20,18 +20,28 @@ fixture set: one no-evidence question at distance ~0.44, and five answerable que
 clustered at 0.14-0.20 (0.5, the original placeholder, sat above both clusters and let
 the no-evidence case through as "confident"). That is not enough signal to calibrate a
 real threshold, and distance distributions shift as the corpus grows — a value fit to
-two documents will not hold on forty. Do not treat 0.3 as validated, and do not tune it
-further by hand. The slice-2 eval harness must derive this properly: plot best-match
-distance for a real set of known-answerable vs. known-unanswerable questions across a
+two documents will not hold on forty. Do not treat it as validated, and do not tune it
+further by hand. The eval harness must derive this properly: plot best-match distance
+for a real set of known-answerable vs. known-unanswerable questions across a
 representative corpus size, and pick the threshold from where that distribution
 actually separates.
+
+The threshold is expressed in COSINE distance: the Chroma collection pins
+hnsw:space=cosine (src/store/vectorstore.py), and bge-small-en-v1.5 embeddings are
+unit-normalized, so cosine distance == L2^2 / 2 exactly. The value 0.045 is the
+cosine-space equivalent of the original L2 0.3 (0.3^2 / 2) — the same decision
+boundary in the metric the store actually reports, not a re-tuned constant. If the
+embedding model or the store metric ever changes, the threshold's metric must be
+re-derived, not assumed.
 """
 
 from src.answer.generate import AnswerDraft
 from src.ingest.chunk import normalize_whitespace
 from src.retrieval.hybrid_search import RetrievedChunk
 
-WEAK_MATCH_DISTANCE = 0.3
+# 0.3 (L2, the original placeholder) squared over 2: cosine distance on
+# unit-normalized bge embeddings. Same boundary, store's metric. See docstring.
+WEAK_MATCH_DISTANCE = 0.045
 
 
 class GroundedConfidence(str):

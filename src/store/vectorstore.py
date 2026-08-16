@@ -36,7 +36,19 @@ class VectorStore:
         embedding_fn = embedding_functions.SentenceTransformerEmbeddingFunction(
             model_name=model_name, revision=DEFAULT_MODEL_REVISION
         )
-        self._collection = self._client.get_or_create_collection(name=collection_name, embedding_function=embedding_fn)
+        # Pin the distance metric explicitly. Chroma's default is L2, which the
+        # confidence threshold (WEAK_MATCH_DISTANCE) used to be interpreted in —
+        # but a future Chroma default change would silently invalidate that
+        # threshold, and the collection's metric is fixed at creation. Cosine is
+        # the right metric for normalized bge embeddings (the distance the
+        # confidence docstring reasons about), and the threshold was converted to
+        # cosine space (see confidence.py). Any existing out/chroma index was
+        # built with the old metric and MUST be rebuilt (delete + re-ingest).
+        self._collection = self._client.get_or_create_collection(
+            name=collection_name,
+            embedding_function=embedding_fn,
+            metadata={"hnsw:space": "cosine"},
+        )
 
     def upsert(self, ids: list[str], texts: list[str], metadatas: list[dict]) -> None:
         self._collection.upsert(ids=ids, documents=texts, metadatas=metadatas)
