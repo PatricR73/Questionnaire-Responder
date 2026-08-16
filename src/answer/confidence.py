@@ -27,21 +27,31 @@ representative corpus size, and pick the threshold from where that distribution
 actually separates.
 
 The threshold is expressed in COSINE distance: the Chroma collection pins
-hnsw:space=cosine (src/store/vectorstore.py), and bge-small-en-v1.5 embeddings are
-unit-normalized, so cosine distance == L2^2 / 2 exactly. The value 0.045 is the
-cosine-space equivalent of the original L2 0.3 (0.3^2 / 2) — the same decision
-boundary in the metric the store actually reports, not a re-tuned constant. If the
-embedding model or the store metric ever changes, the threshold's metric must be
-re-derived, not assumed.
+hnsw:space=cosine (src/store/vectorstore.py). The value stays 0.3, carried into the
+cosine metric because it reproduces the established decision boundary — NOT because
+it was re-derived. The re-derivation was attempted and failed, honestly: a sweep of
+best-match cosine distances across the 24-question eval set (with the pinned model
+revision and current chunking) shows the two classes overlap completely —
+answerable questions span 0.232-0.412, NOT_FOUND questions span 0.236-0.390, and
+the adversarial ADV-01/ADV-02 questions retrieve plausibly-near evidence at 0.236/
+0.246, squarely inside the strong-match range. That is the same conclusion tuning
+pass 1 reached for the old metric: no threshold value separates the clusters, so no
+value is more defensible than the one that reproduces the prior boundary. (An
+earlier draft of this change converted 0.3 to 0.045 = 0.3^2/2 under the assumption
+the old distances were L2 of unit-normalized vectors; the measured sweep showed the
+old numbers were never in that space, and 0.045 flags every retrieved chunk as weak
+— reverted for that reason.) If the embedding model or the store metric ever
+changes, the threshold's metric must be re-derived from measured data, not assumed.
 """
 
 from src.answer.generate import AnswerDraft
 from src.ingest.chunk import normalize_whitespace
 from src.retrieval.hybrid_search import RetrievedChunk
 
-# 0.3 (L2, the original placeholder) squared over 2: cosine distance on
-# unit-normalized bge embeddings. Same boundary, store's metric. See docstring.
-WEAK_MATCH_DISTANCE = 0.045
+# 0.3, expressed in the store's cosine metric. Carried over, not re-derived:
+# the eval data shows the answerable and NOT_FOUND distance distributions overlap
+# completely, so no clean value exists (see the module docstring).
+WEAK_MATCH_DISTANCE = 0.3
 
 
 class GroundedConfidence(str):
