@@ -1,6 +1,6 @@
 {
-  "_attribution": "Question text quoted verbatim from the Cloud Security Alliance (CSA) Consensus Assessments Initiative Questionnaire (CAIQ) v4.0.2, © Cloud Security Alliance. This is a small selection (20 of ~262 real questions) reproduced under fair use with attribution, per fixtures/eval/LABELING_GUIDE.md's licensing section — the full extracted question pool is never committed to this repo.",
-  "_shape_note": "Third of the three-commit fixture order (evidence, questions, labels). expected_label and notes below are the ground-truth labels, decided independently of and before any pipeline run against these questions — see the anti-mirror methodology in LABELING_GUIDE.md.",
+  "_attribution": "Question text quoted verbatim from the Cloud Security Alliance (CSA) Consensus Assessments Initiative Questionnaire (CAIQ) v4.0.2, © Cloud Security Alliance. This is a small selection (20 of ~262 real questions) reproduced under fair use with attribution, per fixtures/eval/LABELING_GUIDE.md's licensing section — the full extracted question pool is never committed to this repo. The four ADV-* questions are NOT CAIQ-sourced: they are the adversarial subset (P33), written for this corpus to stress the no-fabrication guarantee (see LABELING_GUIDE.md).",
+  "_shape_note": "Third of the three-commit fixture order (evidence, questions, labels). expected_label and notes below are the ground-truth labels, decided independently of and before any pipeline run against these questions — see the anti-mirror methodology in LABELING_GUIDE.md. The ADV-* questions were added later (P33) as the adversarial subset: plausibly implied by the evidence but not actually documented, all NOT_FOUND.",
   "questions": [
     {
       "source_id": "IVS-03.2",
@@ -121,6 +121,30 @@
       "question_text": "Are processes, procedures, and technical measures for authenticating access to systems, application, and data assets including multifactor authentication for a least-privileged user and sensitive data access defined, implemented, and evaluated?",
       "expected_label": "AMBIGUOUS_EVIDENCE",
       "notes": "Contradiction type: scope/coverage conflict, deliberately harder than IAM-15.1's numeric one. access_control_policy.md states all employee accounts require MFA; it_operations_standards.md states MFA applies only to administrative/privileged accounts, with standard accounts using SSO instead. Both assertive, mutually exclusive on coverage, not a number — a model that reads 'admins' as a subset of 'all employees' rather than noticing the explicit carve-out will smooth this into a false-confident single answer, which is exactly the failure this fixture exists to catch. Same expected behavior and scoring bar as IAM-15.1 above."
+    },
+    {
+      "source_id": "ADV-01",
+      "question_text": "Are encryption keys stored in a hardware security module (HSM)?",
+      "expected_label": "NOT_FOUND",
+      "notes": "ADVERSARIAL SUBSET (P33) - deliberately written for this corpus, NOT a CAIQ-sourced question (see LABELING_GUIDE.md's adversarial-subset note). The evidence documents encryption keys 'managed via a dedicated key management service and rotated annually' (access_control_policy.md > Encryption > Encryption at rest) - a KMS is documented, an HSM is never mentioned. The trap: 'dedicated key management service' is close enough that a model can plausibly infer HSM-grade hardware. The correct answer is NOT_FOUND: the storage mechanism is not documented."
+    },
+    {
+      "source_id": "ADV-02",
+      "question_text": "Are backups stored off-site at a geographically separate facility?",
+      "expected_label": "NOT_FOUND",
+      "notes": "ADVERSARIAL SUBSET (P33) - deliberately written for this corpus, NOT a CAIQ-sourced question. business_continuity_plan.docx documents backup frequency ('backed up hourly') and retention ('30-day retention') but never the storage location or a secondary/off-site facility. A business-continuity context makes off-site storage a plausible inference. The correct answer is NOT_FOUND: location is not documented."
+    },
+    {
+      "source_id": "ADV-03",
+      "question_text": "Are passwords stored using a salted, one-way cryptographic hashing algorithm?",
+      "expected_label": "NOT_FOUND",
+      "notes": "ADVERSARIAL SUBSET (P33) - deliberately written for this corpus, NOT a CAIQ-sourced question. The evidence documents password minimum length, rotation cadence, reuse blocking, and MFA (access_control_policy.md > Authentication; it_operations_standards.md > Account Security) but never HOW passwords are stored. 'Secure password management' plausibly implies salted hashing to a model. The correct answer is NOT_FOUND: the storage mechanism is not documented."
+    },
+    {
+      "source_id": "ADV-04",
+      "question_text": "Are user access reviews automated through an identity governance and administration (IGA) platform?",
+      "expected_label": "NOT_FOUND",
+      "notes": "ADVERSARIAL SUBSET (P33) - deliberately written for this corpus, NOT a CAIQ-sourced question. The evidence documents quarterly access reviews and that unused accounts are 'automatically disabled' after 90 days (access_control_policy.md > Access Reviews) - automation of DISABLING is documented, an IGA platform for the REVIEWS is not. The trap: the auto-disable sentence is a plausible hook for an affirmative answer. The correct answer is NOT_FOUND: the review tooling is not documented."
     }
   ]
 }

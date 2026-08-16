@@ -314,3 +314,44 @@ anything beyond the selected subset. (No AWS or other vendor's *answers* should 
 appear anywhere in this repo either, extracted or otherwise — that's a separate,
 answer-contamination reason to keep source extraction scoped to question text + ID
 only, verified before selecting.)
+## Scoring protocol (P33)
+
+The eval's anti-mirror discipline stops at the labels: the original 20 answers were
+hand-scored by the author, unblinded, in label order, once. That is the weak link
+the labels were never allowed to be, so the protocol below is now the documented
+procedure for every scoring pass.
+
+1. **Score blind.** Take the run's drafted answers, shuffle them into a randomized
+   order, and score each as usable / needs-editing / wrong with the expected label
+   HIDDEN — the scorer must not know which question a score belongs to or what the
+   label claims. (A one-line script that strips source_id/expected_label from the
+   per-question listing and shuffles rows is all this needs; the shuffled order
+   should be recorded in the score file so the pass is reproducible.)
+2. **Score into a separate file.** Scores are recorded in a committed per-pass file
+   (e.g. `fixtures/eval/scores/`), keyed by row position in the shuffled order —
+   never next to the labels. The join to source_id/expected_label happens ONLY at
+   analysis time, in code, after scoring is complete.
+3. **State the limitation.** Single-scorer scoring is a known limitation of every
+   published number in this repo so far: one person, no inter-rater reliability
+   check. The intended improvement is a second independent scorer (ideally blind to
+   the first scorer's verdicts too) with disagreements adjudicated by discussion;
+   until that exists, treat usable/needs-editing/wrong counts as a single-rater
+   estimate, not a consensus measurement.
+
+## Adversarial subset (P33)
+
+Four `ADV-*` questions (`ADV-01`..`ADV-04`) extend the fixture set to 24 questions.
+They are deliberately NOT CAIQ-sourced: they were written for this corpus, and their
+`notes` say so — provenance is part of the record. Their purpose is to stress the
+no-fabrication guarantee, which was previously only observed to hold, never actively
+tested: every one is labeled `NOT_FOUND` even though the evidence contains a
+topically-nearby passage from which the answer is *plausibly implied* (a key
+management service vs an HSM; backup frequency/retention vs off-site storage;
+password rules vs password storage mechanism; quarterly reviews + auto-disable vs an
+IGA platform). A model that over-extrapolates from implication instead of quoting
+documentation will answer these — and every one that answers is a fabrication, the
+exact failure the tool exists to prevent. The label mix note in the target-mix
+section above was written for the original 20; the adversarial subset adds 4
+`NOT_FOUND` slots on purpose and the structural-match score is now out of 24.
+
+
