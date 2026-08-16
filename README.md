@@ -101,6 +101,7 @@ overturned by instrumenting instead of inferring: see **[`EVAL.md`](EVAL.md)**.
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+pip install -e .          # optional: installs the `qresp` console command
 ```
 
 The first `ingest` or `answer` run downloads a local sentence-transformers embedding
@@ -108,10 +109,15 @@ model (a few hundred MB). This can take a few minutes and looks like a hang — 
 
 ## Usage
 
+Every command below can be run either as `python -m src.pipeline ...` (from the repo
+root) or as `qresp ...` (after `pip install -e .`, from anywhere) — they are the
+same CLI.
+
 ### 1. Ingest your evidence base
 
 ```
 python -m src.pipeline ingest --evidence-dir path/to/your/evidence/
+# or: qresp ingest --evidence-dir path/to/your/evidence/
 ```
 
 Parses every `.md`, `.txt`, `.docx`, and `.pdf` file in the directory (PDF parsing
@@ -127,6 +133,7 @@ python -m src.pipeline answer \
   --questionnaire path/to/questionnaire.xlsx \
   --output out/filled.xlsx \
   --limit 5
+# or: qresp answer --questionnaire path/to/questionnaire.xlsx --output out/filled.xlsx --limit 5
 ```
 
 Detects the question/answer/constrained-vocabulary columns, answers each question
@@ -153,6 +160,7 @@ crash partway through a run does not discard already-paid-for answers.
 ```
 python -m src.pipeline answer --questionnaire fixtures/questionnaire_sample.xlsx \
   --output out/filled_stub.xlsx --limit 0 --provider stub
+# or: qresp answer --questionnaire fixtures/questionnaire_sample.xlsx --output out/filled_stub.xlsx --limit 0 --provider stub
 ```
 
 `--provider stub` exercises the entire pipeline — retrieval, column detection,

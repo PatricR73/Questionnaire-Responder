@@ -2,7 +2,7 @@
 
 import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from src.data_dir import data_dir
@@ -99,7 +99,7 @@ def start_questionnaire_run(
 ) -> int:
     cursor = conn.execute(
         "INSERT INTO questionnaire_runs (source_path, output_path, created_at, run_config) VALUES (?, ?, ?, ?)",
-        (source_path, output_path, datetime.now(timezone.utc).isoformat(), json.dumps(run_config or {})),
+        (source_path, output_path, datetime.now(UTC).isoformat(), json.dumps(run_config or {})),
     )
     conn.commit()
     return cursor.lastrowid
@@ -155,7 +155,7 @@ def record_audit_entry(
             json.dumps(sources_consulted),
             confidence,
             provider,
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
         ),
     )
     conn.commit()
@@ -176,7 +176,7 @@ def record_human_review(
     """
     conn.execute(
         "UPDATE audit_log SET human_action = ?, timestamp = ? WHERE run_id = ? AND row_index = ?",
-        (human_action, datetime.now(timezone.utc).isoformat(), run_id, row_index),
+        (human_action, datetime.now(UTC).isoformat(), run_id, row_index),
     )
     if reviewed_answer is not None:
         conn.execute(
@@ -200,7 +200,7 @@ def record_export(conn: sqlite3.Connection, run_id: int, output_path: str, revie
         (
             run_id,
             json.dumps({"output_path": output_path, "review_counts": review_counts}),
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
         ),
     )
     conn.commit()

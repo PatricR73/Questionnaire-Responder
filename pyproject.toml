@@ -1,0 +1,51 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vendor-security-questionnaire-rag"
+version = "0.1.0"
+description = "Turn a vendor security questionnaire spreadsheet into a first-pass draft, citing your own security docs for every answer and never inventing a control you don't have."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Proprietary" }
+dependencies = [
+    "anthropic>=0.40.0",
+    "sentence-transformers>=3.0.0",
+    "chromadb>=0.5.0",
+    "openpyxl>=3.1.0",
+    "python-docx>=1.1.0",
+    "pdfplumber>=0.11.0",
+    "rank-bm25>=0.2.2",
+    "pydantic>=2.7.0",
+    "click>=8.1.0",
+    "streamlit>=1.38.0",
+]
+
+[project.scripts]
+qresp = "src.pipeline:cli"
+
+[tool.setuptools.packages.find]
+include = ["src*"]
+
+# Replaces the deleted root conftest.py, whose only purpose was putting the repo
+# root on sys.path so `python -m src.pipeline` and the src.* imports work from
+# anywhere. pytest's pythonpath option does the same thing declaratively.
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+
+# Mirrors ruff.toml (which this section supersedes — see the commit that removed
+# it): line-length 120 with E501 ignored (long documentation-grade comments and
+# description strings are deliberate), default rules otherwise on.
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+check_untyped_defs = true
+ignore_missing_imports = true
+no_implicit_optional = true

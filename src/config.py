@@ -15,10 +15,9 @@ from __future__ import annotations
 
 import dataclasses
 import os
+import tomllib
 from dataclasses import dataclass, fields
 from pathlib import Path
-
-import tomllib
 
 from src.answer.confidence import WEAK_MATCH_DISTANCE
 from src.answer.generate import MAX_TOKENS, MODEL

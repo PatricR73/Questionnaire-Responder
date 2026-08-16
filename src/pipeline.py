@@ -31,7 +31,7 @@ import json
 import logging
 import os
 import time
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import anthropic
@@ -61,7 +61,7 @@ class _JsonLinesFormatter(logging.Formatter):
 
     def format(self, record: logging.LogRecord) -> str:
         payload = {
-            "ts": datetime.now(timezone.utc).isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -425,7 +425,7 @@ def answer(
                             # mode, and without them two runs to the same --output interleave
                             # into one file with no way to separate them (P20).
                             "run_id": run_id,
-                            "ts": datetime.now(timezone.utc).isoformat(),
+                            "ts": datetime.now(UTC).isoformat(),
                             "row_index": q.row_index,
                             "question_text": q.question_text,
                             "final_confidence": final_confidence,
