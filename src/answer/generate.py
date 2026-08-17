@@ -354,7 +354,12 @@ def generate_answer(
         raises used to report zero tokens."""
         # Dynamic attribute on a BaseException; mypy can't see it, and the
         # pipeline reads it back with getattr(..., "_row_usage", None).
-        exc._row_usage = {"input_tokens": total_input_tokens, "output_tokens": total_output_tokens, "cache_read_input_tokens": total_cache_read, "cache_creation_input_tokens": total_cache_creation}
+        exc._row_usage = {
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
+            "cache_read_input_tokens": total_cache_read,
+            "cache_creation_input_tokens": total_cache_creation,
+        }
         return exc
 
     try:
