@@ -10,10 +10,7 @@ subscription. Measured 63% structural match on a 24-question set (20 real CAIQ
 questions plus an adversarial subset built to stress the no-fabrication goal). See
 Results below for the real numbers.
 
-<video controls width="700" poster="docs/demo.webm">
-  <source src="docs/demo.webm" type="video/webm">
-  (Your browser does not support HTML5 video — open <a href="docs/demo.webm">docs/demo.webm</a>.)
-</video>
+![Demo video — filling a questionnaire with the review screen](docs/demo.webm)
 
 # Vendor Security Questionnaire Responder
 
