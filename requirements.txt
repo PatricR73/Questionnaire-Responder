@@ -7,5 +7,9 @@ pdfplumber>=0.11.0
 rank-bm25>=0.2.2
 pydantic>=2.7.0
 click>=8.1.0
-pytest>=8.0.0
 streamlit>=1.38.0
+# Runtime deps that used to resolve only transitively (C1): src/answer/tokenize.py
+# imports these directly, and an upstream change to anthropic/transformers could
+# silently break --dry-run with an ImportError otherwise.
+httpx>=0.27.0
+tokenizers>=0.19.0

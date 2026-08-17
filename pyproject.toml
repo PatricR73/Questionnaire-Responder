@@ -7,7 +7,7 @@ name = "questionnaire-responder"
 version = "0.1.0"
 description = "Turn a vendor security questionnaire spreadsheet into a first-pass draft, citing your own security docs for every answer and never inventing a control you don't have."
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 dependencies = [
     "anthropic>=0.40.0",
@@ -20,6 +20,20 @@ dependencies = [
     "pydantic>=2.7.0",
     "click>=8.1.0",
     "streamlit>=1.38.0",
+    # Runtime deps that used to resolve only transitively (C1): src/answer/tokenize.py
+    # imports these directly.
+    "httpx>=0.27.0",
+    "tokenizers>=0.19.0",
+]
+
+[project.optional-dependencies]
+# Everything a contributor needs to develop, lint, and type-check (C1). Pinned so
+# a tool release cannot break main with no commit to this repo — CI installs this
+# extra rather than a floating pip install ruff.
+dev = [
+    "pytest==9.1.1",
+    "ruff==0.16.3",
+    "mypy==1.16.1",
 ]
 
 [project.scripts]
@@ -45,7 +59,27 @@ line-length = 120
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.11"
+# Floor raised to 3.12 (C2): numpy 2.x's stubs use 3.12-only syntax, so mypy
+# cannot check against a 3.11 target with the current dependency set.
+python_version = "3.12"
 check_untyped_defs = true
-ignore_missing_imports = true
 no_implicit_optional = true
+
+[[tool.mypy.overrides]]
+# mypy 1.16 crashes with an INTERNAL ERROR on the anthropic SDK's own type
+# annotations on this Python; we check our code, not the SDK's.
+module = "anthropic.*"
+follow_imports = "skip"
+
+[[tool.mypy.overrides]]
+# Third-party packages without library stubs: we check our code, not theirs.
+module = [
+    "openpyxl.*",
+    "tokenizers",
+    "chromadb.*",
+    "streamlit.*",
+    "pdfplumber.*",
+    "docx",
+    "rank_bm25",
+]
+ignore_missing_imports = true
