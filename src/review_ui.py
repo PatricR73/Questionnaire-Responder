@@ -13,6 +13,7 @@ it, and overwriting it would make past baselines unreproducible.
 
 import json
 import math
+import os
 import sys
 from pathlib import Path
 
@@ -49,6 +50,13 @@ POLARITY_BADGES = {
 # button click; the filter is applied before pagination so the page counts and the
 # filtered totals stay meaningful.
 PAGE_SIZE = 50
+
+# Read-only mode (pack 3, C2): QRESP_REVIEW_READ_ONLY=1 freezes the review
+# screen over a committed store for the hosted demo — no approve/edit/reject/undo,
+# no export. The store itself is not writable (Streamlit Cloud runs against the
+# committed demo_store/), so this is belt-and-braces: the UI must also refuse to
+# offer actions it cannot persist.
+READ_ONLY = os.environ.get("QRESP_REVIEW_READ_ONLY", "").strip().lower() in ("1", "true", "yes", "on")
 
 st.set_page_config(page_title="Questionnaire review", layout="wide")
 
@@ -129,6 +137,10 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
             st.markdown(_highlight_cited(chunk["text"], cited_sentences))
 
     row_index = row["row_index"]
+    if READ_ONLY:
+        st.caption("Frozen sample — read-only. Run 'qresp demo' (or the Docker image) to review a real run.")
+        st.divider()
+        return
     edit_key = f"editing_{row_index}"
     approve_col, edit_col, reject_col, undo_col = st.columns(4)
     if approve_col.button("Approve", key=f"approve_{row_index}"):
@@ -220,6 +232,14 @@ def export_reviewed_workbook(conn, run_id: int, source_path: str, output_path: s
 def main():
     conn = get_conn()
 
+    if READ_ONLY:
+        st.warning(
+            "Frozen sample — this is a read-only, hosted demo of the review screen over "
+            "synthetic fixture evidence. Approve/Edit/Reject and export are disabled. "
+            "Run 'qresp demo' or the Docker image to review your own run. Source: "
+            "[the repository](https://github.com/PatricR73/Questionnaire-Responder)."
+        )
+
     runs = conn.execute(
         "SELECT id, source_path, output_path, created_at, run_config FROM questionnaire_runs ORDER BY created_at DESC"
     ).fetchall()
@@ -282,7 +302,9 @@ def main():
         if all_reviewed
         else f"Export reviewed workbook ({reviewed_count}/{len(reviewable)} reviewed)"
     )
-    if st.sidebar.button(export_label, disabled=not all_reviewed):
+    if READ_ONLY:
+        st.sidebar.caption("Export disabled in read-only mode.")
+    elif st.sidebar.button(export_label, disabled=not all_reviewed):
         export_path = export_reviewed_workbook(conn, run_id, run_row["source_path"], run_row["output_path"], rows)
         st.sidebar.success(f"Exported to {export_path}")
 

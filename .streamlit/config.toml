@@ -1,0 +1,10 @@
+# Streamlit config for the hosted demo (pack 3, C2) and local runs.
+# NOTE: no [server] address is set here on purpose — Streamlit's default binds to
+# localhost, which is what the review UI should do (it serves a database of
+# internal policy text; see README "What leaves your machine").
+[theme]
+base = "light"
+primaryColor = "#1f6feb"
+
+[browser]
+gatherUsageStats = false
