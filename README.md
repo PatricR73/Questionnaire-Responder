@@ -25,6 +25,36 @@ first-pass answers to that spreadsheet automatically, citing exactly where each 
 came from. A person still reviews every answer before it goes out. The tool's job is
 to make the first draft fast and honest, not to remove the human from the loop.
 
+## Try it in 30 seconds
+
+No Python setup, no API key, no model download:
+
+```
+docker build -t qresp-demo .
+docker run -p 8501:8501 qresp-demo
+```
+
+That builds an image with the exact pinned environment and the pre-built demo store
+(see demo_store/), fills a 24-question demo questionnaire using
+--provider stub (no Anthropic call, no key), and opens the review screen at
+http://localhost:8501 — cited evidence on the left, an
+honest NOT FOUND IN PROVIDED DOCUMENTS row to see, and Approve/Edit/Reject for
+every row. The first docker build downloads the environment once (the image is
+large by design — it bakes in the local model stack); every docker run after that
+is instant and offline.
+
+Prefer no Docker? One command against the same pre-built store, with Python 3.12+ and
+the pinned requirements installed:
+
+```
+qresp demo
+```
+
+(First run may download the local embedding model — a few hundred MB, one time. The
+Docker image skips this entirely.) Both paths print the filled workbook and sidecar
+paths at the end. Everything the demo shows is built from the synthetic fixtures in
+fixtures/ — never real customer material.
+
 This is a CLI pipeline with an optional read-only review screen (`streamlit run
 src/review_ui.py` — see Usage). The design rationale — why the tool never fabricates,
 what is deliberately not built yet, and the v2 priority order — lives in

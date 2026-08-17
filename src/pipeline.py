@@ -139,6 +139,128 @@ def ingest(evidence_dir: Path):
     click.echo(f"Ingested {n} chunks.")
 
 
+
+@cli.command()
+@click.option(
+    "--questionnaire",
+    type=click.Path(exists=True, dir_okay=False, path_type=Path),
+    default=None,
+    help="Questionnaire to demo (default: the committed 24-question eval workbook).",
+)
+@click.option(
+    "--port",
+    type=int,
+    default=8501,
+    show_default=True,
+    help="Port for the review screen launched at the end.",
+)
+@click.option(
+    "--no-ui",
+    is_flag=True,
+    help="Fill the demo workbook and print paths, but do not launch the review screen.",
+)
+def demo(questionnaire: Path | None, port: int, no_ui: bool):
+    """One command, no API key, no ingest: a filled workbook plus a running review screen.
+
+    Commercial rationale (pack 3, C1): the strongest evidence this project has — the
+    measured eval, the citation audit trail, the honest NOT_FOUND behaviour — used to
+    be gated behind a twenty-minute setup (clone, venv, ~1 GB of dependencies, a
+    few-hundred-MB model download, an API key, two CLI commands). Almost nobody
+    completed it. This command collapses that to one step against a PRE-BUILT store
+    (committed under demo_store/ and built from the synthetic fixtures/evidence/),
+    so ingest — and therefore the embedding model — is not required, and
+    --provider stub means no Anthropic key and no API spend. The one remaining
+    one-time download is the local embedding model needed to embed the QUERY side of
+    retrieval; the Docker image (see the README) bakes that model in at build time,
+    so a bare "docker run" is truly zero-download.
+
+    The demo store is copied to out/demo_store/ before the run so the committed
+    snapshot stays pristine; the run's workbook and sidecar land in out/demo/.
+    The review screen is launched over that copy, bound to localhost.
+    """
+    import shutil
+    import subprocess
+    import sys
+
+    from src.data_dir import REPO_ROOT
+
+    store_src = REPO_ROOT / "demo_store"
+    if not (store_src / "store.db").exists():
+        raise click.ClickException(
+            f"Demo store not found at {store_src}. This build ships without the pre-built "
+            "demo store; run 'qresp ingest --evidence-dir fixtures/evidence' and re-run this command."
+        )
+    questionnaire_path = questionnaire or (REPO_ROOT / "fixtures" / "eval" / "questionnaire_eval.xlsx")
+    if not questionnaire_path.exists():
+        raise click.ClickException(f"Demo questionnaire not found at {questionnaire_path}.")
+
+    demo_store_dir = REPO_ROOT / "out" / "demo_store"
+    shutil.rmtree(demo_store_dir, ignore_errors=True)
+    shutil.copytree(store_src, demo_store_dir)
+
+    out_dir = REPO_ROOT / "out" / "demo"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    output_path = out_dir / "demo_filled.xlsx"
+
+    click.echo("Running the demo questionnaire against the pre-built store with --provider stub ...")
+    click.echo("(first run may download the local embedding model — a few hundred MB, one time;")
+    click.echo(" the Docker image bakes it in, so a bare 'docker run' skips this entirely)")
+    env = dict(os.environ)
+    env["QRESP_DATA_DIR"] = str(demo_store_dir)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "src.pipeline",
+            "answer",
+            "--questionnaire",
+            str(questionnaire_path),
+            "--output",
+            str(output_path),
+            "--limit",
+            "0",
+            "--provider",
+            "stub",
+        ],
+        env=env,
+    )
+    if result.returncode != 0:
+        raise click.ClickException(f"Demo run failed (exit {result.returncode}).")
+    click.echo("")
+    click.echo(f"Demo workbook:  {output_path}")
+    click.echo(f"Run sidecar:    {output_path.with_suffix('.jsonl')}")
+    click.echo(f"Demo store:     {demo_store_dir}")
+    if no_ui:
+        click.echo("Review screen skipped (--no-ui).")
+        return
+
+    import src.review_ui as review_ui_module
+
+    # The review UI reads its data dir at call time, so the env var set here is
+    # picked up by the in-process launch below.
+    os.environ["QRESP_DATA_DIR"] = str(demo_store_dir)
+    click.echo(f"Launching the review screen at http://localhost:{port} (Ctrl-C to stop) ...")
+    from streamlit.web import cli as stcli
+
+    sys.argv = [
+        "streamlit",
+        "run",
+        str(Path(review_ui_module.__file__).resolve()),
+        "--server.address",
+        "127.0.0.1",
+        "--server.port",
+        str(port),
+        "--server.headless",
+        "true",
+    ]
+    stcli.main()
+
+
+
+
+
+
+
 def _aggregate_sub_results(sub_results):
     """Combine per-sub-question results into ONE row-level result (B3).
 

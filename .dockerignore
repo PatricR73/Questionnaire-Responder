@@ -1,0 +1,14 @@
+# Build context hygiene: the demo image only needs the pinned lock, the package,
+# the pre-built demo store, and the eval questionnaire.
+.git
+.venv
+out
+__pycache__
+*.pyc
+.pytest_cache
+.env
+docs
+tests
+.github
+*.log.jsonl
+*.egg-info
