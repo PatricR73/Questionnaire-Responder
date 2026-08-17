@@ -92,24 +92,37 @@ baseline instead of just assumed to help:
 ## v2 priority order
 
 In order, based on what the eval baseline actually showed blocking the score — not a
-wishlist:
+wishlist. Each item tracks as a GitHub issue (milestone v0.2.0); the prose below is
+the narrative, the issues are the work items:
 
-1. **A confidence signal that isn't a single flat distance threshold.** This is what
-   6 of the 7 remaining wrong answers trace back to, and the eval data shows
-   conclusively that no value of `WEAK_MATCH_DISTANCE` fixes it for this corpus (see
-   the threshold finding in [`EVAL.md`](../EVAL.md)) — the "weak but real" and
-   "genuinely absent" distance clusters overlap. Likely needs a larger, more varied
-   corpus to find a real separation point, a different signal entirely (e.g. distance
-   of the specific cited chunk rather than the best distance across everything
-   retrieved — the per-chunk grounding work makes that identity available), or both.
-2. **Real compound-question splitting.** The other remaining wrong case, and the only
-   one not blocked by the threshold problem described in [`EVAL.md`](../EVAL.md) —
-   independently fixable now.
-3. **Expand the eval corpus.** Both the threshold redesign above and any future
-   retrieval/prompt change need a bigger, more diverse fixture set to measure against
-   than 20 questions over 3 documents; this baseline is deliberately small and honest
-   about that, not a finished instrument.
-4. **Feedback loop** (write approved/edited answers back into the evidence base), now
+1. **A confidence signal that isn't a single flat distance threshold** — [issue #3](https://github.com/PatricR73/Questionnaire-Responder/issues/3).
+   This is what 6 of the 7 remaining wrong answers trace back to, and the eval data
+   shows conclusively that no value of `WEAK_MATCH_DISTANCE` fixes it for this
+   corpus (see the threshold finding in [`EVAL.md`](../EVAL.md)) — the "weak but
+   real" and "genuinely absent" distance clusters overlap. Likely needs a larger,
+   more varied corpus to find a real separation point, a different signal entirely
+   (e.g. distance of the specific cited chunk rather than the best distance across
+   everything retrieved — the per-chunk grounding work makes that identity
+   available), or both. The A1 entailment layer and the P11 rerank score are the
+   first non-distance signals in place.
+2. **Real compound-question splitting** — [issue #4](https://github.com/PatricR73/Questionnaire-Responder/issues/4).
+   The other remaining wrong case, and the only one not blocked by the threshold
+   problem described in [`EVAL.md`](../EVAL.md) — independently fixable now; the
+   pipeline's aggregation contract (one row-level result, weakest confidence across
+   parts) is already in place for it.
+3. **Expand the eval corpus** — [issue #5](https://github.com/PatricR73/Questionnaire-Responder/issues/5).
+   Both the threshold redesign above and any future retrieval/prompt change need a
+   bigger, more diverse fixture set to measure against than 24 questions over 3
+   documents; this baseline is deliberately small and honest about that, not a
+   finished instrument.
+4. **Feedback loop** (write approved/edited answers back into the evidence base) —
+   [issue #2](https://github.com/PatricR73/Questionnaire-Responder/issues/2), now
    that the review UI exists to produce that signal.
-5. **PDF fixture validation**, and CSV/other questionnaire formats — lower priority
-   because no real user of this tool has hit either gap yet; speculative until then.
+5. **PDF fixture validation**, and CSV/other questionnaire formats — [issue #9](https://github.com/PatricR73/Questionnaire-Responder/issues/9);
+   lower priority because no real user of this tool has hit either gap yet;
+   speculative until then.
+
+Open findings from the first adversarial run also track as issues: the ADV-04
+status-mapping defect ([issue #6](https://github.com/PatricR73/Questionnaire-Responder/issues/6)),
+the entailment layer's pending live eval ([issue #7](https://github.com/PatricR73/Questionnaire-Responder/issues/7)),
+and the demo's missing inline player on github.com ([issue #8](https://github.com/PatricR73/Questionnaire-Responder/issues/8)).
