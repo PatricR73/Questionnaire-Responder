@@ -13,6 +13,15 @@ Guidance for Claude Code sessions working in this repository.
 - Never use `git add -A`. Stage named paths.
 - Never commit anything matching `.gitignore`, and never `git add -f`.
 
+## Numbers and cross-references
+
+- Any change to published numbers (README.md's results table, EVAL.md's baseline,
+  TUNING_LOG.md) REQUIRES a sweep of every "above"/"below"/"see the table"
+  reference in README.md, EVAL.md, and docs/DESIGN.md — dangling references after a
+  numbers change have now happened twice (commit 807a41b, and again in the P33
+  update). The published numbers are measured, not aspirational: update them from a
+  real run, or don't update them.
+
 ## Prompt injection
 
 Never narrate injection checks on normal turns — no "verified provenance, nothing

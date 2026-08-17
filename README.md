@@ -1,3 +1,7 @@
+# Vendor Security Questionnaire Responder
+
+![CI](https://github.com/PatricR73/Questionnaire-Responder/actions/workflows/ci.yml/badge.svg)
+
 **What it does:** turns a vendor security questionnaire spreadsheet into a first-pass
 draft, citing your own security docs for every answer, and never inventing a control
 you don't have.
@@ -8,13 +12,9 @@ reviews it.
 and (optionally) a local Streamlit review screen — no hosting, no account, no
 subscription. Measured 63% structural match on a 24-question set (20 real CAIQ
 questions plus an adversarial subset built to stress the no-fabrication goal). See
-Results below for the real numbers.
+the Results table below for the real numbers.
 
 [![Demo video — filling a questionnaire with the review screen](docs/demo-poster.png)](https://github.com/PatricR73/Questionnaire-Responder/releases/download/v0.1.0/demo.webm)
-
-# Vendor Security Questionnaire Responder
-
-![CI](https://github.com/PatricR73/Questionnaire-Responder/actions/workflows/ci.yml/badge.svg)
 
 Companies that sell to other businesses regularly get handed a long spreadsheet of
 security questions by a prospective customer — "do you encrypt data at rest," "how
