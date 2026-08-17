@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  test:
-    name: pytest
+  test-locked:
+    name: pytest (requirements.lock — reproducibility)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -17,23 +17,53 @@ jobs:
           python-version: "3.12"
           cache: pip
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      # C2: the README credits the pinned environment with the published numbers,
+      # so CI must exercise THAT environment — the loose file is the early-warning
+      # leg, this leg is the reproducibility claim.
+      - name: Install locked environment + pinned dev tools
+        run: |
+          pip install -r requirements.lock
+          pip install -e ".[dev]"
 
-      # The embedding model download is a few hundred MB; without a cache every
-      # workflow run re-downloads it. Cache the HF model directory so the
-      # one-time download happens once per runner image, not per run.
+      # The embedding model download is a few hundred MB. The cache key hashes the
+      # lockfile (C2) so a dependency change invalidates it instead of silently
+      # serving a stale cache; restore-keys still finds the old cache when only
+      # unrelated files changed.
       - name: Cache HuggingFace models
         uses: actions/cache@v4
         with:
           path: ~/.cache/huggingface
-          key: hf-models-${{ runner.os }}
+          key: hf-models-${{ runner.os }}-${{ hashFiles('requirements.lock') }}
+          restore-keys: |
+            hf-models-${{ runner.os }}-
+
+      - name: Run tests
+        run: pytest tests/
+
+      - name: Console entry point works
+        run: qresp --help
+
+  test-loose:
+    name: pytest (requirements.txt — early warning)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install loose deps + pinned dev tools
+        run: |
+          pip install -r requirements.txt
+          pip install -e ".[dev]"
 
       - name: Run tests
         run: pytest tests/
 
   lint:
-    name: ruff
+    name: ruff + mypy
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -42,11 +72,16 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install ruff
-        run: pip install ruff
+      # Pinned dev tools from the extra (C1) — never a floating pip install ruff,
+      # which lets a tool release break main with no commit to this repo.
+      - name: Install dev tools (pinned)
+        run: pip install -e ".[dev]"
 
       - name: ruff check
         run: ruff check src/ tests/ fixtures/
 
       - name: ruff format --check
         run: ruff format --check src/ tests/ fixtures/
+
+      - name: mypy
+        run: mypy src/
