@@ -1,0 +1,17 @@
+# Dependabot configuration — dependency drift surfaces as a PR that CI checks.
+# With requirements.lock in play (the reproducibility path), drift has a place to
+# land as a reviewed PR rather than silently changing the pinned environment.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    # requirements.txt is the loose declaration; the lockfile is what CI and the
+    # published numbers run on — open PRs against both so a bump is visible.
+    open-pull-requests-limit: 5
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
