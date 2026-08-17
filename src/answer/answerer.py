@@ -230,7 +230,7 @@ class StubAnswerer(Answerer):
         )
         best_distance = min(distances) if distances else None
 
-        if best_distance is not None and best_distance <= self._weak_match_distance:
+        if best_chunk is not None and best_distance is not None and best_distance <= self._weak_match_distance:
             answer = f"[STUB] Per {best_chunk.source_filename} — {best_chunk.heading_path or '(no heading)'}: {best_chunk.text[:200]}"
             return AnswerResult(
                 answer=answer,

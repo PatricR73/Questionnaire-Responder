@@ -319,7 +319,8 @@ def generate_answer(
         alone ignores that signal and can hammer a cooldown). Capped so a hostile
         Retry-After can't stall the run for minutes."""
         if isinstance(exc, anthropic.RateLimitError):
-            headers = getattr(exc, "response", None).headers if getattr(exc, "response", None) else {}
+            response = getattr(exc, "response", None)
+            headers = response.headers if response is not None else {}
             retry_after = headers.get("retry-after")
             if retry_after:
                 try:
@@ -351,12 +352,9 @@ def generate_answer(
         """Attach the tokens spent on this row to the exception so the pipeline's
         error path can report real cost — a row that burns two API calls and then
         raises used to report zero tokens."""
-        exc._row_usage = {
-            "input_tokens": total_input_tokens,
-            "output_tokens": total_output_tokens,
-            "cache_read_input_tokens": total_cache_read,
-            "cache_creation_input_tokens": total_cache_creation,
-        }
+        # Dynamic attribute on a BaseException; mypy can't see it, and the
+        # pipeline reads it back with getattr(..., "_row_usage", None).
+        exc._row_usage = {"input_tokens": total_input_tokens, "output_tokens": total_output_tokens, "cache_read_input_tokens": total_cache_read, "cache_creation_input_tokens": total_cache_creation}
         return exc
 
     try:

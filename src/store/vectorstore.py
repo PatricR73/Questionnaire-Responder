@@ -55,14 +55,17 @@ class VectorStore:
         # confidence docstring reasons about), and the threshold was converted to
         # cosine space (see confidence.py). Any existing out/chroma index was
         # built with the old metric and MUST be rebuilt (delete + re-ingest).
+        # chroma's typing for embedding_function/metadatas is narrower than its
+        # runtime accepts (SentenceTransformerEmbeddingFunction is a valid
+        # EmbeddingFunction); mypy can't see that, so the ignores are scoped here.
         self._collection = self._client.get_or_create_collection(
             name=collection_name,
-            embedding_function=embedding_fn,
+            embedding_function=embedding_fn,  # type: ignore[arg-type]
             metadata={"hnsw:space": "cosine"},
         )
 
     def upsert(self, ids: list[str], texts: list[str], metadatas: list[dict]) -> None:
-        self._collection.upsert(ids=ids, documents=texts, metadatas=metadatas)
+        self._collection.upsert(ids=ids, documents=texts, metadatas=metadatas)  # type: ignore[arg-type]
 
     def delete_by_source(self, source_key: str) -> None:
         """Remove every entry belonging to one source document.
@@ -90,14 +93,21 @@ class VectorStore:
         # Query-only instruction prefix — see BGE_QUERY_PREFIX. The stored passage
         # embeddings were built unprefixed at ingest; only the query side changes.
         result = self._collection.query(query_texts=[BGE_QUERY_PREFIX + text], n_results=top_k)
+        # chroma types these as Optional[list[list[...]]]; at runtime they are
+        # always present for a real query, but guard anyway so a None can never
+        # crash a caller with an indexing error.
+        ids = result["ids"] or [[]]
+        documents = result["documents"] or [[]]
+        metadatas = result["metadatas"] or [[]]
+        distances = result["distances"] or [[]]
         hits = []
-        for i in range(len(result["ids"][0])):
+        for i in range(len(ids[0])):
             hits.append(
                 {
-                    "id": result["ids"][0][i],
-                    "text": result["documents"][0][i],
-                    "metadata": result["metadatas"][0][i],
-                    "distance": result["distances"][0][i],
+                    "id": ids[0][i],
+                    "text": documents[0][i],
+                    "metadata": metadatas[0][i],
+                    "distance": distances[0][i],
                 }
             )
         return hits

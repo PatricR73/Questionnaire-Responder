@@ -39,12 +39,12 @@ import click
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 
-from src.answer.answerer import AnswerStatus, AnthropicAnswerer, StubAnswerer
+from src.answer.answerer import Answerer, AnswerStatus, AnthropicAnswerer, StubAnswerer
 from src.answer.split_questions import split_question
 from src.ingest.embed import ingest_evidence
 from src.questionnaire.parse_xlsx import detect_columns, read_questions
 from src.questionnaire.write_xlsx import write_answer
-from src.retrieval.hybrid_search import HybridSearcher
+from src.retrieval.hybrid_search import HybridSearcher, RetrievedChunk
 from src.store import db
 from src.store.vectorstore import VectorStore
 
@@ -156,9 +156,9 @@ def _aggregate_sub_results(sub_results):
     """
     parts = []
     cited_ids = set()
-    cited_sentences = []
-    sources = []
-    all_evidence = []
+    cited_sentences: list[str] = []
+    sources: list[str] = []
+    all_evidence: list[RetrievedChunk] = []
     polarities = set()
     confidences = []
     vocab_set = set()
@@ -332,6 +332,7 @@ def answer(
         cli_overrides["top_k"] = top_k
     cfg = load_config(config_file=config, cli_overrides=cli_overrides)
 
+    answerer: Answerer
     if provider == "anthropic" and not dry_run:
         if not os.environ.get("ANTHROPIC_API_KEY"):
             raise click.ClickException(
@@ -409,6 +410,7 @@ def answer(
                 # are combined into ONE row-level result before any write — one
                 # cell, one answers row, one audit entry, one count per sheet row.
                 sub_results = []
+                error_message: str | None = None
                 try:
                     for sub_question in split_question(q.question_text):
                         # B1: evidence must be bound BEFORE search — if search

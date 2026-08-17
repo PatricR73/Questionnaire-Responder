@@ -16,8 +16,9 @@ from __future__ import annotations
 import dataclasses
 import os
 import tomllib
-from dataclasses import dataclass, fields
+from dataclasses import MISSING, dataclass, fields
 from pathlib import Path
+from typing import Any
 
 from src.answer.confidence import WEAK_MATCH_DISTANCE
 from src.answer.generate import MAX_TOKENS, MODEL
@@ -99,9 +100,9 @@ class Config:
 
 def _coerce(name: str, raw: object):
     if name in _INT_FIELDS:
-        return int(raw)
+        return int(str(raw))
     if name in _FLOAT_FIELDS:
-        return float(raw)
+        return float(str(raw))
     if name in _BOOL_FIELDS:
         if isinstance(raw, bool):
             return raw
@@ -136,7 +137,13 @@ def load_config(config_file: Path | None = None, cli_overrides: dict | None = No
     config_file may also be supplied via the QRESP_CONFIG environment variable.
     cli_overrides is a dict of field name -> value from CLI flags (the highest
     precedence); unknown names in it are a programming error and raise."""
-    values = {f.name: f.default for f in fields(Config)}
+    # Any-typed on purpose: values flow through the coercion chain (TOML/env/CLI)
+    # and mypy cannot track the runtime types; the dataclass construction below is
+    # the single point where the final types are enforced.
+    values: dict[str, Any] = {}
+    for f in fields(Config):
+        if f.default is not MISSING:
+            values[f.name] = f.default
 
     file_path = config_file
     if file_path is None and os.environ.get(_ENV_VAR):
@@ -152,4 +159,23 @@ def load_config(config_file: Path | None = None, cli_overrides: dict | None = No
             raise ValueError(f"Unknown CLI config override(s): {sorted(unknown)}")
         values.update(cli_overrides)
 
-    return Config(**values)
+    # Explicit construction rather than Config(**values) so the field names are
+    # checked; the runtime types are guaranteed by the coercion chain above.
+    return Config(
+        model=values["model"],
+        max_tokens=values["max_tokens"],
+        weak_match_distance=values["weak_match_distance"],
+        vector_weight=values["vector_weight"],
+        rrf_k=values["rrf_k"],
+        candidate_pool=values["candidate_pool"],
+        top_k=values["top_k"],
+        max_chunk_chars=values["max_chunk_chars"],
+        min_chunk_chars=values["min_chunk_chars"],
+        overlap_sentences=values["overlap_sentences"],
+        embedding_model=values["embedding_model"],
+        reranker=values["reranker"],
+        entailment_check=values["entailment_check"],
+        entailment_model=values["entailment_model"],
+        input_price_per_mtok=values["input_price_per_mtok"],
+        output_price_per_mtok=values["output_price_per_mtok"],
+    )

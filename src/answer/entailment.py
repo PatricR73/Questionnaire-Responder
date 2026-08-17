@@ -151,7 +151,8 @@ def check_answer_entailment(
 
     def retry_delay(attempt: int, exc: BaseException) -> float:
         if isinstance(exc, anthropic.RateLimitError):
-            headers = getattr(exc, "response", None).headers if getattr(exc, "response", None) else {}
+            response = getattr(exc, "response", None)
+            headers = response.headers if response is not None else {}
             retry_after = headers.get("retry-after")
             if retry_after:
                 try:

@@ -67,7 +67,7 @@ class HybridSearcher:
         self._bm25 = BM25Okapi([_tokenize(self._chunks_by_id[cid]["text"]) for cid in self._ids]) if self._ids else None
 
     def search(self, query: str, top_k: int = 5) -> list[RetrievedChunk]:
-        if not self._ids:
+        if not self._ids or self._bm25 is None:
             return []
 
         bm25_scores = self._bm25.get_scores(_tokenize(query))

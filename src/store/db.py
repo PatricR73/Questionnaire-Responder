@@ -107,7 +107,10 @@ def start_questionnaire_run(
         (source_path, output_path, datetime.now(UTC).isoformat(), json.dumps(run_config or {})),
     )
     conn.commit()
-    return cursor.lastrowid
+    lastrowid = cursor.lastrowid
+    if lastrowid is None:
+        raise RuntimeError("INSERT into questionnaire_runs did not return a row id")
+    return lastrowid
 
 
 def record_answer(

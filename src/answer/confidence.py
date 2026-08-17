@@ -79,7 +79,7 @@ def cross_check_confidence(
     draft: AnswerDraft,
     evidence_chunks: list[RetrievedChunk],
     weak_match_distance: float = WEAK_MATCH_DISTANCE,
-) -> str:
+) -> GroundedConfidence:
     """Returns a GroundedConfidence: the confidence string plus which chunks grounded it.
 
     The confidence rules are unchanged (see the module docstring). The cited ids are
