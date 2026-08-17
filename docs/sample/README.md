@@ -1,4 +1,4 @@
-# Sample output — stub provider
+# Sample output
 
 Everything in this folder is **stub-provider output**: the pipeline ran with
 `--provider stub`, so no API call was made, no model was consulted, and the answers
@@ -17,10 +17,18 @@ the evidence, a neutral `NOT FOUND IN PROVIDED DOCUMENTS` fill, or the red error
 marker. Everything else (merged cells, section headers, spacers, formatting) is
 untouched.
 
+The folder also carries the **real-API sample** (`filled_anthropic*`) — the same
+24 questions answered by the real provider, showing actual drafted answers rather
+than stub markers. Regenerate it with `scripts/run_sample_anthropic.py` (needs a
+valid `ANTHROPIC_API_KEY` and a few cents).
+
 | File | What it is |
 |---|---|
 | `filled_stub.xlsx` | The pipeline's output over the 24-question eval workbook |
 | `filled_stub_reviewed.xlsx` | The reviewed export after approving/editing/rejecting rows in the review UI |
+| `filled_anthropic.xlsx` | The real-API run's output over the same 24 questions (produced by `scripts/run_sample_anthropic.py`) |
+| `filled_anthropic.jsonl` | The real-API run's per-row sidecar log |
+| `filled_anthropic_reviewed.xlsx` | The real-API run's reviewed export, with a small recorded review trail |
 | `filled_stub.jsonl` | The per-row sidecar log (run id, timing, status) — the structured `.log.jsonl` debug log also exists next to the workbook but is gitignored by design |
 | `review_ui_main.png` | The review screen showing the run's rows |
 | `review_ui_filter_high.png` | The review screen with the confidence filter applied |
@@ -77,3 +85,25 @@ produces is an honest record of where it falls short.
 shows the run's rows with confidence badges, the drafted answer beside the cited
 evidence, and Approve / Edit / Reject / Undo actions. The screenshots show the
 sidebar run picker, the review progress, and the row list.
+
+
+## The real-API sample: what the product actually writes
+
+The stub run above exercises the plumbing; the real-API run is the product. Its
+answer cells hold drafted answers that cite the evidence verbatim, plus a
+confidence state — and, where the cross-check could not confirm the claim, the
+honest abstention. Reading four rows of it is the fastest way to judge whether
+this tool is worth evaluating, which is why the walkthrough below quotes the real
+captured content where it exists.
+
+The committed `filled_anthropic*` artifacts were produced by:
+
+```
+python scripts/run_sample_anthropic.py
+```
+
+...and then committed. Re-run the script (with a valid key) whenever the eval
+numbers move. The reviewed export records review events on a small set of
+representative rows — approving the grounded answers, editing the flagged-low row,
+rejecting an abstention — purely so the export demonstrates the review workflow;
+see the script's docstring. This is sample curation, never a measurement.
