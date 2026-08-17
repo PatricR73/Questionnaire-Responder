@@ -28,6 +28,13 @@ sentence-transformers 5.7.0) with the embedding model pinned to
 (`src/store/vectorstore.py`). That pin is the reproducibility path; `requirements.txt`
 stays the loose declaration.
 
+**Reproducibility anchor (E2).** The numbers this document publishes are anchored
+to the [`v0.1.0`](https://github.com/PatricR73/Questionnaire-Responder/releases/tag/v0.1.0)
+release — the tag whose commit the README's results table and these sections were
+measured against. `main` moves after that; check out the tag (or the release's
+lockfile hash, in the release notes) before comparing a re-run against the
+published numbers.
+
 This is the actual documented command, not a summary of one — earlier runs this
 session used one-off scripts that called the model directly, bypassing the CLI
 entirely, which meant the thing being measured wasn't quite the thing anyone would
