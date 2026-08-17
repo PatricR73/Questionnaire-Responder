@@ -103,6 +103,23 @@ quoted, not synthesized.
 You will be given the question and a set of evidence passages, each labeled with its source document \
 and location. Use only those passages."""
 
+# C4: rules appended to the user message ONLY when a prior approved answer exists.
+# Kept out of SYSTEM_PROMPT on purpose — the baseline prompt stays byte-identical for
+# rows without candidates, so the published eval numbers are unaffected, and the
+# prompt cache key only varies per row-type. Read as a continuation of SYSTEM_PROMPT's
+# rules 1-8 (rule 9).
+PRIOR_ANSWER_RULES = (
+    "9. A PRIOR APPROVED ANSWER IS A CANDIDATE, NOT EVIDENCE. You may be shown a previously "
+    "human-approved answer to a similar question, clearly labelled as such with its provenance. "
+    "It is NOT a source of truth and it is NOT part of the evidence: it may be stale, superseded "
+    "by a policy change, or simply wrong. Use it only as a starting point, and only to the extent "
+    "that every claim it makes is directly supported by the CURRENT evidence passages. Never cite "
+    "the prior answer itself, never copy its claims into cited_sentences, and if the current "
+    "evidence contradicts it or no longer supports it, ignore it entirely and answer from the "
+    "evidence alone. The citation, grounding, and entailment checks that run after you are judged "
+    "against the CURRENT evidence, never against the prior answer."
+)
+
 # The system prompt is identical for every row of a run (~1.5k tokens), so it is sent
 # as an explicit block list marked for ephemeral prompt caching: the API serves it
 # from cache on rows 2..N instead of re-sending it. Verified live that the API
@@ -250,13 +267,34 @@ def _extract_answer_payload(response, max_tokens: int = MAX_TOKENS) -> dict:
     return payload
 
 
-def _build_user_message(question: str, evidence_chunks: list[RetrievedChunk], vocab_values: list[str] | None) -> str:
+def _build_user_message(
+    question: str,
+    evidence_chunks: list[RetrievedChunk],
+    vocab_values: list[str] | None,
+    prior_answers: list[dict] | None = None,
+) -> str:
+    """Build the user message. prior_answers (C4) are formatted as labelled candidate
+    blocks AFTER the evidence, so the "candidate, not evidence" framing (PRIOR_ANSWER_RULES)
+    holds in the prompt's actual ordering: the model reads the real evidence first, then
+    sees what it may consider as a starting point."""
     passages = "\n\n".join(
         f"[Passage {i + 1} — {c.source_filename}, {c.heading_path or '(no heading)'}, {c.loc_ref}]\n{c.text}"
         for i, c in enumerate(evidence_chunks)
     )
     vocab_line = f"\nAllowed vocabulary values: {', '.join(vocab_values)}" if vocab_values else ""
-    return f"Question: {question}{vocab_line}\n\nEvidence passages:\n\n{passages if passages else '(no evidence passages retrieved)'}"
+    prior_block = ""
+    if prior_answers:
+        from src.answer.library import format_prior_answer_block
+
+        blocks = "\n\n".join(format_prior_answer_block(c) for c in prior_answers)
+        prior_block = (
+            f"\n\n{PRIOR_ANSWER_RULES}\n\n"
+            f"Prior approved answer(s) to consider as candidates only:\n\n{blocks}"
+        )
+    return (
+        f"Question: {question}{vocab_line}\n\nEvidence passages:\n\n{passages if passages else '(no evidence passages retrieved)'}"
+        f"{prior_block}"
+    )
 
 
 def generate_answer(
@@ -266,6 +304,7 @@ def generate_answer(
     *,
     model: str = MODEL,
     max_tokens: int = MAX_TOKENS,
+    prior_answers: list[dict] | None = None,
 ) -> AnswerDraft:
     """Draft one answer. model/max_tokens default to the module constants (the
     P18 Config passes its resolved values through here); the constants keep their
@@ -341,7 +380,7 @@ def generate_answer(
                     raise
                 time.sleep(retry_delay(attempt, exc))
 
-    base_message = _build_user_message(question, evidence_chunks, vocab_values)
+    base_message = _build_user_message(question, evidence_chunks, vocab_values, prior_answers=prior_answers)
     response = call(base_message)
     total_input_tokens = response.usage.input_tokens
     total_output_tokens = response.usage.output_tokens

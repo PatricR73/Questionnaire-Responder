@@ -447,6 +447,11 @@ def answer(
             f"--output {output} is the same file as --questionnaire {questionnaire} — "
             f"refusing to overwrite the source workbook in place. Choose a different --output."
         )
+    # The output parent must exist BEFORE logging setup: the structured log file
+    # opens next to the workbook, and a first run into a fresh directory (e.g.
+    # --output reports/filled.xlsx with no reports/ yet) used to crash here,
+    # before the try/finally that would have created it.
+    output.parent.mkdir(parents=True, exist_ok=True)
     _setup_logging(output, verbose=verbose, quiet=quiet)
 
     cli_overrides = {}
@@ -533,6 +538,23 @@ def answer(
                 # cell, one answers row, one audit entry, one count per sheet row.
                 sub_results = []
                 error_message: str | None = None
+                # C4: answer library — prior human-approved answers surfaced as labelled
+                # candidates for the generator (never as retrieval evidence). Looked up
+                # once per row before the sub-question loop; freshness-gated inside
+                # find_candidates (stale source docs exclude an entry).
+                prior_answers: list[dict] = []
+                if cfg.answer_library:
+                    from src.answer.library import find_candidates
+
+                    prior_answers = find_candidates(
+                        conn, q.question_text, vector_store, threshold=cfg.library_semantic_threshold
+                    )
+                    if prior_answers:
+                        log.debug(
+                            "answer library: %d candidate(s) surfaced for row %s",
+                            len(prior_answers),
+                            q.row_index,
+                        )
                 try:
                     for sub_question in split_question(q.question_text):
                         # B1: evidence must be bound BEFORE search — if search
@@ -543,7 +565,8 @@ def answer(
                         evidence = []
                         evidence = searcher.search(sub_question, top_k=cfg.top_k)
                         result = answerer.answer_question(
-                            sub_question, evidence, column_map.vocab_values, row_index=q.row_index
+                            sub_question, evidence, column_map.vocab_values, row_index=q.row_index,
+                            prior_answers=prior_answers or None,
                         )
                         sub_results.append((sub_question, result, evidence))
                         total_input_tokens += result.input_tokens
@@ -588,6 +611,8 @@ def answer(
                     cited_sentences = []
                     sources = []
                     evidence = []
+                    library_state = None
+                    library_provenance = None
                     answer_text = None
                     vocab_selection = None
                     self_confidence = None
@@ -612,6 +637,24 @@ def answer(
                     sources = agg["sources"]
                     evidence = agg["evidence"]
                     sub_question_text = agg["sub_question_text"]
+                    # C4: mark rows that drew on the library. A row counts as "used"
+                    # when a fresh candidate was surfaced AND the generated answer
+                    # materially reuses it; "surfaced" when a candidate existed but
+                    # the draft went its own way. Either way the reviewer sees the
+                    # provenance, and the citation/entailment checks have already
+                    # run against the ORIGINAL evidence.
+                    library_state = None
+                    library_provenance = None
+                    if prior_answers and final_confidence in ("high", "low"):
+                        from src.answer.library import answer_uses_prior
+
+                        best = prior_answers[0]
+                        used = answer_uses_prior(answer_text or "", best)
+                        library_state = "used" if used else "surfaced"
+                        library_provenance = (
+                            f"run {best['run_id']} row {best['row_index']} "
+                            f"{best['human_action']} at {best['reviewed_at']}"
+                        )
                     in_tokens = agg["input_tokens"]
                     out_tokens = agg["output_tokens"]
                     entail_in = agg["entailment_input_tokens"]
@@ -640,6 +683,8 @@ def answer(
                     "output_tokens": out_tokens,
                     "entailment_input_tokens": entail_in,
                     "entailment_output_tokens": entail_out,
+                    "library_state": library_state,
+                    "library_provenance": library_provenance,
                     "error": error_message,
                 }
                 if error_message is None:
@@ -656,7 +701,10 @@ def answer(
                     )
                 caught_exc = None
 
-                write_answer(ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence)
+                write_answer(
+                    ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence,
+                    library_state=library_state, library_provenance=library_provenance,
+                )
                 db.record_answer(
                     conn,
                     run_id,
@@ -670,6 +718,24 @@ def answer(
                     cited_chunk_ids,
                     polarity=polarity,
                     cited_sentences=cited_sentences,
+                    library_candidate=(
+                        {
+                            "state": library_state,
+                            "provenance": library_provenance,
+                            "candidates": [
+                                {
+                                    "run_id": c["run_id"],
+                                    "row_index": c["row_index"],
+                                    "human_action": c["human_action"],
+                                    "reviewed_at": c["reviewed_at"],
+                                    "similarity": c.get("similarity"),
+                                }
+                                for c in prior_answers
+                            ],
+                        }
+                        if prior_answers
+                        else None
+                    ),
                 )
                 db.record_audit_entry(conn, run_id, q.row_index, sources, final_confidence, provider=provider)
 
@@ -686,6 +752,7 @@ def answer(
                             "final_confidence": final_confidence,
                             "polarity": polarity,
                             "provider": provider,
+                            "library_state": library_state,
                             "answer": answer_text,
                             "error": error_message,
                             "elapsed_seconds": round(elapsed, 2),

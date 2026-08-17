@@ -84,6 +84,7 @@ class Answerer(ABC):
         chunks: list[RetrievedChunk],
         vocab_values: list[str] | None = None,
         row_index: int | None = None,
+        prior_answers: list[dict] | None = None,
     ) -> AnswerResult: ...
 
 
@@ -109,6 +110,7 @@ class AnthropicAnswerer(Answerer):
         chunks: list[RetrievedChunk],
         vocab_values: list[str] | None = None,
         row_index: int | None = None,
+        prior_answers: list[dict] | None = None,
     ) -> AnswerResult:
         draft = generate_answer(
             question,
@@ -116,6 +118,7 @@ class AnthropicAnswerer(Answerer):
             vocab_values,
             model=self._model or generate_module.MODEL,
             max_tokens=self._max_tokens or generate_module.MAX_TOKENS,
+            prior_answers=prior_answers,
         )
         final_confidence = cross_check_confidence(
             draft,
@@ -220,6 +223,7 @@ class StubAnswerer(Answerer):
         chunks: list[RetrievedChunk],
         vocab_values: list[str] | None = None,
         row_index: int | None = None,
+        prior_answers: list[dict] | None = None,
     ) -> AnswerResult:
         if self.fail_row is not None and row_index == self.fail_row:
             raise RuntimeError(f"StubAnswerer: simulated failure on row {row_index} (--stub-fail-row)")

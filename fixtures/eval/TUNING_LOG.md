@@ -228,3 +228,43 @@ a real result and the flag stays off.
 14/24 baseline is now 15/24 (the ADV-02 row was counted as a NOT_FOUND regression
 before; it is a match under the corrected label) — the corrected number replaces the
 old one in README/EVAL.
+
+
+## Pass 8 — answer library (C4): separate namespace, freshness-gated, flag OFF
+
+**What changed:** the feedback loop is now built — but as the answer library, not as
+"approved answers written back into the evidence base". A separate
+`reviewed_answers` namespace (SQLite) stores human-approved/edited answers with
+full provenance (original question, source run, row, action, timestamp, and the
+content hashes of the source docs the answer was grounded in). At answer time, a
+non-stale, semantically-equivalent prior answer is surfaced to the generator as a
+labelled CANDIDATE (never as evidence: HybridSearcher reads only the chunks table,
+and citation/entailment checks run against the original evidence only). Rows that
+draw on the library are marked with a third fill colour + provenance comment in the
+workbook, and the eval can measure the library's effect via the `answer_library`
+config flag (default OFF so the published baseline stays reproducible).
+
+**Why the separate namespace (the design constraint that makes it safe):** writing
+approved answers into the retrieval pool would manufacture confident,
+human-endorsed, WRONG answers — a Q1-approved answer citing policy v3 outranks
+policy v4 in Q3, source traceability erodes, and reviewer errors become training
+signal. The library can only be a candidate pool, gated by freshness: an entry
+whose source documents have changed (content hashes recorded at ingest) is
+excluded, and an entry with no verifiable snapshot is excluded too. A prior answer
+is a strong prior, not a source of truth.
+
+**Measured (stub, mechanics only — no API spend):** with the library seeded from
+the curated demo store and `answer_library=true`, exact normalized matches return
+similarity 1.0 and semantic near-equivalents return 0.75-0.93 in the same embedding
+space as retrieval; stale entries (source hash changed) are excluded by the
+freshness gate; approved answers are invisible to HybridSearcher (structural
+isolation test); and a full stub run records `library_state`/provenance per row
+with the workbook marker applied. The structural-match score is unchanged by the
+flag (retrieval untouched; candidates only extend the prompt).
+
+**Pending (needs API credits):** the real-provider delta — run
+`python fixtures/eval/run_eval.py --repeats 3` with `answer_library=true`
+seeded from a prior real run, and record the structural-match delta against the
+15/24 baseline. Until that measurement exists, the flag stays OFF. If the delta is
+negative, that is a real result; the library stays off and the candidate-presentation
+is redesigned.

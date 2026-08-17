@@ -16,6 +16,13 @@ ERROR_FILL = PatternFill(start_color="FFCDD2", end_color="FFCDD2", fill_type="so
 # 300-row sheet it must be visually distinguishable from a real answer: a human
 # reviewer has to find these rows on purpose, not by accident.
 NOT_FOUND_FILL = PatternFill(start_color="E0E0E0", end_color="E0E0E0", fill_type="solid")
+# C4: third fill colour — a row whose answer drew on the answer library (a prior
+# human-approved answer surfaced as a candidate). Pale green: distinct from the
+# low-confidence yellow (a real answer needing review) and the NOT_FOUND grey, so a
+# reviewer can see at a glance which rows came from the library versus fresh
+# generation, and the comment carries the full provenance (source run, row, action,
+# timestamp) so the reuse is auditable.
+LIBRARY_FILL = PatternFill(start_color="D7E8D7", end_color="D7E8D7", fill_type="solid")
 NOT_FOUND_COMMENT = Comment(
     "No supporting evidence was found in the provided documents for this question. "
     "This is an honest abstention, not a verified absence — the row needs a human answer.",
@@ -42,6 +49,8 @@ def write_answer(
     answer_text: str,
     vocab_selection: str | None,
     final_confidence: str,
+    library_state: str | None = None,
+    library_provenance: str | None = None,
 ) -> None:
     """final_confidence is one of 'high', 'low', 'none' (checked, no evidence), or 'error'
     (not checked — a per-row failure, distinct from 'none' so it is never mistaken for a
@@ -72,3 +81,20 @@ def write_answer(
     if final_confidence == "low":
         answer_cell.fill = FLAG_FILL
         answer_cell.comment = Comment("Low confidence — needs human review before sending.", "Questionnaire Responder")
+
+    # C4: the library marker. "used" rows get the green fill + provenance comment;
+    # "surfaced" rows (a candidate existed but the generated answer did not
+    # materially reuse it) get a comment only, so the marker never overrides the
+    # confidence fill a reviewer actually needs to see.
+    if library_state == "used":
+        answer_cell.fill = LIBRARY_FILL
+        answer_cell.comment = Comment(
+            "Answer drew on a prior approved answer (answer library). " + (library_provenance or ""),
+            "Questionnaire Responder",
+        )
+    elif library_state == "surfaced":
+        answer_cell.comment = Comment(
+            "A prior approved answer was surfaced for this question but the draft did not "
+            "materially reuse it — verify against current evidence. " + (library_provenance or ""),
+            "Questionnaire Responder",
+        )

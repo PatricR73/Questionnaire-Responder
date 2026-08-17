@@ -117,6 +117,18 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
     st.markdown(header)
     st.write(f"**Q:** {row['question_text']}")
 
+    # C4: show when this row drew on the answer library, with the provenance —
+    # the reviewer must be able to see that a prior approved answer was surfaced
+    # and why, without digging into the store.
+    lib = json.loads(row["library_candidate"]) if row["library_candidate"] else None
+    if lib and lib.get("candidates"):
+        top = lib["candidates"][0]
+        state_label = "**reused a prior approved answer**" if lib.get("state") == "used" else "had a prior approved answer surfaced (draft did not reuse it)"
+        st.caption(
+            f"📚 Answer library: {state_label} — "
+            f"run {top['run_id']}, row {top['row_index']}, {top['human_action']} at {top['reviewed_at']}"
+        )
+
     left, right = st.columns(2)
     with left:
         st.markdown("**Drafted answer**")
@@ -274,7 +286,7 @@ def main():
         """
         SELECT a.row_index, a.question_text, a.drafted_answer, a.reviewed_answer,
                a.vocab_selection, a.final_confidence, a.self_confidence, a.polarity,
-               a.cited_chunk_ids, a.cited_sentences,
+               a.cited_chunk_ids, a.cited_sentences, a.library_candidate,
                l.human_action, l.timestamp
         FROM answers a
         LEFT JOIN audit_log l ON l.id = (

@@ -79,11 +79,21 @@ baseline instead of just assumed to help:
   remaining wrong case not caused by the confidence threshold) — real splitting was
   deferred until there was a number showing how much it actually costs, rather than
   built speculatively.
-- **No feedback loop.** Human-approved/edited answers are not written back into the
-  evidence base yet, so the tool doesn't improve from prior corrections. Same
-  reasoning: writing corrections back into evidence the retrieval/confidence system
-  hasn't been tuned against yet would make it harder, not easier, to tell whether a
-  later change was an improvement.
+- **The answer library is built, behind a flag, as a SEPARATE namespace — not
+  written back into the evidence.** Human-approved answers do feed the next
+  questionnaire (the feature that makes the second questionnaire cheaper than the
+  first), but only as labelled CANDIDATES surfaced to the generator, never as
+  retrieval evidence: `HybridSearcher` reads only the chunks table, so an approved
+  answer is structurally impossible to retrieve as a citation source, and the
+  citation/entailment checks run against the original evidence only. Freshness is
+  enforced at retrieval time — an entry whose source documents have changed is
+  excluded. A prior answer is a strong prior, not a source of truth; the library
+  must never launder a stale claim. Behind the `answer_library` config flag
+  (default OFF until the real-provider delta in TUNING_LOG pass 8 is measured).
+  The reasoning that originally deferred the feedback loop — don't write
+  corrections into evidence the retrieval/confidence system hasn't been tuned
+  against — still holds, and is why the library is a separate namespace rather
+  than a retrieval pool.
 - **PDF parsing is unvalidated.** `src/ingest/parse_docs.py` can parse PDFs, but
   heading detection there is a font-size/layout heuristic with no PDF fixture tested
   against it yet, and it assumes a born-digital PDF (real text, not a scanned image).
@@ -91,11 +101,22 @@ baseline instead of just assumed to help:
 
 ## v2 priority order
 
-In order, based on what the eval baseline actually showed blocking the score — not a
-wishlist. Each item tracks as a GitHub issue (milestone v0.2.0); the prose below is
-the narrative, the issues are the work items:
+In order — with one deliberate exception, based on what a BUYER of this tool
+actually renews for rather than what the eval score says. Everything else is ordered
+by what the eval baseline showed blocking the score; item 1 is ordered by commercial
+leverage, and this document says so rather than pretending otherwise:
 
-1. **A confidence signal that isn't a single flat distance threshold** — [issue #3](https://github.com/PatricR73/Questionnaire-Responder/issues/3).
+1. **The answer library (the feedback loop)** — the single biggest commercial gap,
+   now built behind the `answer_library` flag (see above and TUNING_LOG pass 8).
+   The first questionnaire saves some time; the second one, drawing on approved
+   answers from the first, is where a buyer sees the tool pay for itself — every
+   commercial product in this category (Whistic, Conveyor, SafeBase, Vanta) leads
+   with the answer library because it is what customers renew for. The reordering
+   is commercial, not technical: the eval score was not what moved it. The
+   engineering constraint that keeps it safe (separate namespace, freshness-gated,
+   citation/entailment against original evidence only) is documented above, and the
+   real-provider delta is the gate before it ever defaults on.
+2. **A confidence signal that isn't a single flat distance threshold** — [issue #3](https://github.com/PatricR73/Questionnaire-Responder/issues/3).
    This is what 6 of the 7 remaining wrong answers trace back to, and the eval data
    shows conclusively that no value of `WEAK_MATCH_DISTANCE` fixes it for this
    corpus (see the threshold finding in [`EVAL.md`](../EVAL.md)) — the "weak but
@@ -105,19 +126,16 @@ the narrative, the issues are the work items:
    everything retrieved — the per-chunk grounding work makes that identity
    available), or both. The A1 entailment layer and the P11 rerank score are the
    first non-distance signals in place.
-2. **Real compound-question splitting** — [issue #4](https://github.com/PatricR73/Questionnaire-Responder/issues/4).
+3. **Real compound-question splitting** — [issue #4](https://github.com/PatricR73/Questionnaire-Responder/issues/4).
    The other remaining wrong case, and the only one not blocked by the threshold
    problem described in [`EVAL.md`](../EVAL.md) — independently fixable now; the
    pipeline's aggregation contract (one row-level result, weakest confidence across
    parts) is already in place for it.
-3. **Expand the eval corpus** — [issue #5](https://github.com/PatricR73/Questionnaire-Responder/issues/5).
+4. **Expand the eval corpus** — [issue #5](https://github.com/PatricR73/Questionnaire-Responder/issues/5).
    Both the threshold redesign above and any future retrieval/prompt change need a
    bigger, more diverse fixture set to measure against than 24 questions over 3
    documents; this baseline is deliberately small and honest about that, not a
    finished instrument.
-4. **Feedback loop** (write approved/edited answers back into the evidence base) —
-   [issue #2](https://github.com/PatricR73/Questionnaire-Responder/issues/2), now
-   that the review UI exists to produce that signal.
 5. **PDF fixture validation**, and CSV/other questionnaire formats — [issue #9](https://github.com/PatricR73/Questionnaire-Responder/issues/9);
    lower priority because no real user of this tool has hit either gap yet;
    speculative until then.

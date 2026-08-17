@@ -1,5 +1,6 @@
 """Ingest an evidence directory: parse -> chunk -> embed into Chroma -> mirror metadata into SQLite."""
 
+import hashlib
 import sqlite3
 from pathlib import Path
 
@@ -51,6 +52,16 @@ def ingest_evidence(evidence_dir: Path, conn: sqlite3.Connection, vector_store: 
 
         blocks = parse_document(path)
         chunks = chunk_blocks(blocks, source_filename=source_key)
+
+        # C4: record the source document's content hash so the answer library can
+        # detect staleness — an approved answer grounded in this file must not be
+        # surfaced after the file changes (see db.store_reviewed_answer).
+        file_hash = hashlib.sha256(path.read_bytes()).hexdigest()
+        conn.execute(
+            "INSERT INTO source_docs (source_filename, content_hash, ingested_at) VALUES (?, ?, ?) "
+            "ON CONFLICT(source_filename) DO UPDATE SET content_hash = excluded.content_hash, ingested_at = excluded.ingested_at",
+            (source_key, file_hash, __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()),
+        )
         if not chunks:
             continue
 

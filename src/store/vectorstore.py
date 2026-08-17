@@ -58,6 +58,7 @@ class VectorStore:
         # chroma's typing for embedding_function/metadatas is narrower than its
         # runtime accepts (SentenceTransformerEmbeddingFunction is a valid
         # EmbeddingFunction); mypy can't see that, so the ignores are scoped here.
+        self._embedding_fn = embedding_fn
         self._collection = self._client.get_or_create_collection(
             name=collection_name,
             embedding_function=embedding_fn,  # type: ignore[arg-type]
@@ -88,6 +89,29 @@ class VectorStore:
         """Number of entries in the collection (another ingest-test hook: after a
         shortened re-ingest the count must equal the new chunk total, never the old)."""
         return self._collection.count()
+
+    def embed_texts(self, texts: list[str]) -> list[list[float]]:
+        """Local embeddings for arbitrary texts (no Chroma round-trip).
+
+        Used by the answer library (C4) to compare prior-question texts against the
+        current question on the fly. Deliberately shares the same
+        SentenceTransformerEmbeddingFunction as the store so library similarity is
+        measured in the same vector space as retrieval. The BGE query prefix is NOT
+        applied here: this is text-to-text similarity (prior question vs current
+        question), not the asymmetric retrieval setup the prefix exists for."""
+        return self._embedding_fn(texts)  # type: ignore[no-any-return]
+
+    def embed_query(self, text: str) -> list[float] | None:
+        """Embed one query-side text, or None if the model is unavailable.
+
+        None (rather than raising) lets the answer library degrade gracefully to
+        exact-match-only when the embedding model cannot be loaded — a question
+        library that stops working because the model is missing is worse than one
+        that silently falls back."""
+        try:
+            return list(self.embed_texts([text])[0])
+        except Exception:  # noqa: BLE001 — model unloadable/unavailable: exact-match fallback
+            return None
 
     def query(self, text: str, top_k: int = 5) -> list[dict]:
         # Query-only instruction prefix — see BGE_QUERY_PREFIX. The stored passage

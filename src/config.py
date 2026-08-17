@@ -43,6 +43,8 @@ _FIELD_NAMES = {
     "reranker",
     "entailment_check",
     "entailment_model",
+    "answer_library",
+    "library_semantic_threshold",
     "input_price_per_mtok",
     "output_price_per_mtok",
 }
@@ -56,8 +58,8 @@ _INT_FIELDS = {
     "min_chunk_chars",
     "overlap_sentences",
 }
-_FLOAT_FIELDS = {"weak_match_distance", "vector_weight", "input_price_per_mtok", "output_price_per_mtok"}
-_BOOL_FIELDS = {"reranker", "entailment_check"}
+_FLOAT_FIELDS = {"weak_match_distance", "vector_weight", "input_price_per_mtok", "output_price_per_mtok", "library_semantic_threshold"}
+_BOOL_FIELDS = {"reranker", "entailment_check", "answer_library"}
 
 _ENV_VAR = "QRESP_CONFIG"  # env var pointing at a TOML file
 
@@ -81,6 +83,14 @@ class Config:
     # P11: local cross-encoder reranker over the fused candidate pool, default OFF
     # so the existing baseline stays reproducible. See src/retrieval/reranker.py.
     reranker: bool = False
+    # C4: the answer library — surface human-approved prior answers as labelled
+    # candidates to the generator (never as evidence; citation/entailment still run
+    # against the original evidence). Default OFF so the published baseline stays
+    # reproducible; measured in TUNING_LOG.md before it ever defaults on.
+    answer_library: bool = False
+    # Semantic-equivalence threshold for the library's question matching (see
+    # src/answer/library.py). Conservative by default; revisit with measured data.
+    library_semantic_threshold: float = 0.75
     # A1: third confidence layer — does the answer FOLLOW from the cited sentences
     # (not just cite them verbatim)? Default OFF so the 14/24 baseline stays
     # reproducible. See src/answer/entailment.py. entailment_model should be the
@@ -176,6 +186,8 @@ def load_config(config_file: Path | None = None, cli_overrides: dict | None = No
         reranker=values["reranker"],
         entailment_check=values["entailment_check"],
         entailment_model=values["entailment_model"],
+        answer_library=values["answer_library"],
+        library_semantic_threshold=values["library_semantic_threshold"],
         input_price_per_mtok=values["input_price_per_mtok"],
         output_price_per_mtok=values["output_price_per_mtok"],
     )

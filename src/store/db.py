@@ -50,6 +50,38 @@ CREATE TABLE IF NOT EXISTS audit_log (
     human_action TEXT,
     timestamp TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS source_docs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_filename TEXT NOT NULL UNIQUE,
+    content_hash TEXT NOT NULL,
+    ingested_at TEXT NOT NULL
+);
+
+-- C4: the answer library — a SEPARATE namespace of human-approved answers, never a
+-- retrieval source for the document evidence. HybridSearcher reads only the chunks
+-- table, so an approved answer is structurally impossible to retrieve as evidence;
+-- it is surfaced to the generator as a labelled CANDIDATE with provenance, and the
+-- citation/entailment checks still run against the original evidence. source_doc_hashes
+-- snapshots the content hashes of the source docs the answer was grounded in, so
+-- find_reviewed_answers can exclude entries whose source docs have since changed —
+-- a prior answer is a strong prior, not a source of truth, and must never launder a
+-- stale claim into a fresh questionnaire.
+CREATE TABLE IF NOT EXISTS reviewed_answers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question_text TEXT NOT NULL,
+    answer_text TEXT NOT NULL,
+    polarity TEXT,
+    cited_chunk_ids TEXT NOT NULL,
+    cited_sentences TEXT NOT NULL,
+    source_doc_hashes TEXT NOT NULL,
+    run_id INTEGER NOT NULL,
+    row_index INTEGER NOT NULL,
+    human_action TEXT NOT NULL,
+    reviewed_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_reviewed_answers_question ON reviewed_answers(question_text);
 """
 
 
@@ -87,6 +119,11 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
         # model says support the answer — so they are persisted and highlighted in
         # the displayed chunk text.
         "ALTER TABLE answers ADD COLUMN cited_sentences TEXT",
+        # C4: JSON snapshot of the answer-library state for this row (state,
+        # provenance, and the candidates surfaced with their similarity scores) —
+        # recorded so the review UI can show why a row was marked, and the eval can
+        # measure the library's effect.
+        "ALTER TABLE answers ADD COLUMN library_candidate TEXT",
     ):
         try:
             conn.execute(statement)
@@ -126,11 +163,12 @@ def record_answer(
     cited_chunk_ids: list[str],
     polarity: str | None = None,
     cited_sentences: list[str] | None = None,
+    library_candidate: dict | None = None,
 ) -> None:
     conn.execute(
         "INSERT INTO answers (run_id, row_index, question_text, sub_question_text, drafted_answer, "
-        "vocab_selection, self_confidence, final_confidence, polarity, cited_chunk_ids, cited_sentences) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "vocab_selection, self_confidence, final_confidence, polarity, cited_chunk_ids, cited_sentences, library_candidate) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             run_id,
             row_index,
@@ -143,9 +181,112 @@ def record_answer(
             polarity,
             json.dumps(cited_chunk_ids),
             json.dumps(cited_sentences or []),
+            json.dumps(library_candidate) if library_candidate else None,
         ),
     )
     conn.commit()
+
+
+def record_source_doc(conn: sqlite3.Connection, source_filename: str, content_hash: str) -> None:
+    """Record (or refresh) the content hash of one ingested source document.
+
+    The hash is what the answer library compares against when deciding whether a
+    previously approved answer is still current: an answer approved against policy
+    v3 must not be surfaced after policy v4 lands (C4). Hashes are recomputed from
+    the file at ingest time; see ingest/embed.py."""
+    conn.execute(
+        "INSERT INTO source_docs (source_filename, content_hash, ingested_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(source_filename) DO UPDATE SET content_hash = excluded.content_hash, ingested_at = excluded.ingested_at",
+        (source_filename, content_hash, datetime.now(UTC).isoformat()),
+    )
+    conn.commit()
+
+
+def current_source_hashes(conn: sqlite3.Connection) -> dict[str, str]:
+    """filename -> current content hash, for staleness checks against the library."""
+    return {r["source_filename"]: r["content_hash"] for r in conn.execute("SELECT source_filename, content_hash FROM source_docs")}
+
+
+def store_reviewed_answer(
+    conn: sqlite3.Connection,
+    run_id: int,
+    row_index: int,
+    question_text: str,
+    answer_text: str,
+    polarity: str | None,
+    cited_chunk_ids: list[str],
+    cited_sentences: list[str],
+    source_doc_hashes: dict[str, str],
+    human_action: str,
+) -> int:
+    """Persist a human-approved/edited answer into the separate reviewed-answers namespace.
+
+    Called from the review UI whenever a row is approved or edited, so the library
+    compounds across questionnaires — the feature that makes the second questionnaire
+    cheaper than the first (C4). This is explicitly NOT a retrieval source for the
+    document evidence (HybridSearcher reads only chunks); it is a candidate pool for
+    the generator, gated by freshness against the source-doc hashes snapshot here."""
+    cursor = conn.execute(
+        "INSERT INTO reviewed_answers (question_text, answer_text, polarity, cited_chunk_ids, cited_sentences, "
+        "source_doc_hashes, run_id, row_index, human_action, reviewed_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            question_text,
+            answer_text,
+            polarity,
+            json.dumps(cited_chunk_ids),
+            json.dumps(cited_sentences),
+            json.dumps(source_doc_hashes),
+            run_id,
+            row_index,
+            human_action,
+            datetime.now(UTC).isoformat(),
+        ),
+    )
+    conn.commit()
+    lastrowid = cursor.lastrowid
+    if lastrowid is None:
+        raise RuntimeError("INSERT into reviewed_answers did not return a row id")
+    return lastrowid
+
+
+def find_reviewed_answers(conn: sqlite3.Connection, question_text: str, limit: int = 3) -> list[dict]:
+    """Exact (normalized) prior approved/edited answers for a question, freshness-gated.
+
+    Staleness rule (the design constraint that makes the library safe, C4): an entry
+    whose source docs have since changed is EXCLUDED — a prior answer is a strong
+    prior, not a source of truth, and surfacing a claim approved against old policy
+    would launder a stale statement. Entries with no snapshot (reviewed before source
+    hashes existed, or hashes unknowable) are also excluded: freshness unverifiable
+    is not freshness. Semantic matching happens in src/answer/library.py, which
+    calls this for the exact-match fast path and embeds on the fly for the rest."""
+    norm = " ".join(question_text.split()).casefold()
+    latest = current_source_hashes(conn)
+    rows = conn.execute(
+        "SELECT id, question_text, answer_text, polarity, source_doc_hashes, run_id, row_index, "
+        "human_action, reviewed_at, cited_sentences FROM reviewed_answers "
+        "WHERE question_text = ? ORDER BY reviewed_at DESC LIMIT ?",
+        (question_text, limit),
+    ).fetchall()
+    out = []
+    for r in rows:
+        # Exact match on normalized text so phrasing/whitespace differences don't
+        # hide a prior answer (exact question text comes straight from the workbook
+        # most of the time).
+        if " ".join(r["question_text"].split()).casefold() != norm:
+            continue
+        hashes = json.loads(r["source_doc_hashes"]) if r["source_doc_hashes"] else {}
+        if not hashes:
+            continue
+        if any(latest.get(fname) != h for fname, h in hashes.items()):
+            continue
+        out.append(dict(r))
+        if len(out) >= limit:
+            break
+    return out
+
+
+def count_reviewed_answers(conn: sqlite3.Connection) -> int:
+    return conn.execute("SELECT COUNT(*) AS n FROM reviewed_answers").fetchone()["n"]
 
 
 def record_audit_entry(
@@ -201,6 +342,35 @@ def record_human_review(
             "UPDATE answers SET reviewed_answer = ? WHERE run_id = ? AND row_index = ?",
             (reviewed_answer, run_id, row_index),
         )
+    # C4: an approved or edited row with a real answer joins the answer library —
+    # this is how the library compounds across questionnaires. The final text is the
+    # drafted answer for "approved" and the human's text for "edited"; the snapshot
+    # hashes of the cited source docs gate future freshness.
+    if human_action in ("approved", "edited"):
+        row = conn.execute(
+            "SELECT question_text, drafted_answer, reviewed_answer, polarity, cited_chunk_ids, cited_sentences "
+            "FROM answers WHERE run_id = ? AND row_index = ?",
+            (run_id, row_index),
+        ).fetchone()
+        if row is not None:
+            final_text = (reviewed_answer if human_action == "edited" else None) or row["drafted_answer"] or ""
+            if final_text.strip():
+                cited_ids = json.loads(row["cited_chunk_ids"]) if row["cited_chunk_ids"] else []
+                cited_sentences = json.loads(row["cited_sentences"]) if row["cited_sentences"] else []
+                hashes = {}
+                if cited_ids:
+                    placeholders = ",".join("?" * len(cited_ids))
+                    files = [
+                        r["source_filename"]
+                        for r in conn.execute(
+                            f"SELECT source_filename FROM chunks WHERE embedding_id IN ({placeholders})", cited_ids
+                        )
+                    ]
+                    hashes = {f: h for f, h in current_source_hashes(conn).items() if f in files}
+                store_reviewed_answer(
+                    conn, run_id, row_index, row["question_text"], final_text, row["polarity"],
+                    cited_ids, cited_sentences, hashes, human_action,
+                )
     conn.commit()
 
 
