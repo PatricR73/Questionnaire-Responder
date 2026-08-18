@@ -439,6 +439,14 @@ baseline actually showed blocking the score): see
 
 ```
 pytest tests/
+
+Evidence **connectors** (Confluence, SharePoint, Google Drive, Notion) are scoped but
+deliberately not built — the design, the permission rules, and the conditions that
+must be true before the first one ships are in
+[`docs/ROADMAP-CONNECTORS.md`](docs/ROADMAP-CONNECTORS.md) (tracked as
+[issue #15](https://github.com/PatricR73/Questionnaire-Responder/issues/15),
+milestone v0.3.0).
+
 ```
 
 `tests/test_pipeline_smoke.py` runs ingest, questionnaire parsing, and retrieval
