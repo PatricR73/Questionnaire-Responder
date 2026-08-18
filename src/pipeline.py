@@ -220,9 +220,27 @@ def demo(questionnaire: Path | None, port: int, no_ui: bool, bind: str):
 
     store_src = REPO_ROOT / "demo_store"
     if not (store_src / "store.db").exists():
+        # The demo assets (demo_store/ and the eval questionnaire) ship with the
+        # repository clone and the published Docker image — NOT with a bare
+        # 'pip install' of the package (pyproject packages only src*/qresp*, so a
+        # wheel contains neither). A missing store is therefore either a broken
+        # checkout or an unsupported install path, and conflating them into one
+        # "broken build" error was exactly the bug here: the old advice (qresp
+        # ingest --evidence-dir fixtures/evidence) also needs fixtures that a
+        # wheel does not ship, so a pip-installed user got told to do the one
+        # thing that could not work.
+        if (REPO_ROOT / ".git").is_dir():
+            raise click.ClickException(
+                f"Demo store not found at {store_src} — this checkout is missing the committed "
+                "demo_store/ (re-clone, or rebuild it with: python scripts/build_demo_store.py)."
+            )
         raise click.ClickException(
-            f"Demo store not found at {store_src}. This build ships without the pre-built "
-            "demo store; run 'qresp ingest --evidence-dir fixtures/evidence' and re-run this command."
+            "qresp demo needs the demo assets (demo_store/ and the eval questionnaire), which ship "
+            "with the repository clone and the published Docker image — not with a bare pip install "
+            "of the package. Use one of the two supported paths:\n"
+            "  Clone:   git clone https://github.com/PatricR73/Questionnaire-Responder.git\n"
+            "           cd Questionnaire-Responder && pip install -r requirements.lock && qresp demo\n"
+            "  Docker:  docker run -p 8501:8501 ghcr.io/patricr73/qresp-demo:latest"
         )
     questionnaire_path = questionnaire or (REPO_ROOT / "fixtures" / "eval" / "questionnaire_eval.xlsx")
     if not questionnaire_path.exists():
@@ -257,6 +275,7 @@ def demo(questionnaire: Path | None, port: int, no_ui: bool, bind: str):
             "stub",
         ],
         env=env,
+        cwd=REPO_ROOT,  # never the caller's cwd: `python -m src.pipeline` must resolve src/ from the repo root
         check=False,  # returncode inspected right below, with a clear message
     )
     if result.returncode != 0:
