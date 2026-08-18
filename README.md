@@ -29,38 +29,47 @@ to make the first draft fast and honest, not to remove the human from the loop.
 
 ## Try it in 30 seconds
 
-No Python setup, no API key, no model download:
+No Python setup, no API key, no model download — just Docker:
+
+```
+docker run -p 8501:8501 ghcr.io/patricr73/qresp-demo:latest
+```
+
+That pulls the published demo image (built by the release workflow from tagged
+releases), fills a 24-question demo questionnaire using `--provider stub` (no
+Anthropic call, no key), and opens the review screen at http://localhost:8501 —
+cited evidence on the left, an honest `NOT FOUND IN PROVIDED DOCUMENTS` row to
+see, and Approve/Edit/Reject for every row. The image bakes in the exact pinned
+environment, the pre-built demo store (`demo_store/`), and the local embedding
+model — the first `docker run` is just a pull, and everything after that is
+instant and offline.
+
+Prefer no Docker? One command against the same pre-built store, with Python 3.12+
+and the pinned requirements installed:
+
+```
+qresp demo
+```
+
+(First run may download the local embedding model — a few hundred MB, one time.
+The Docker image skips this entirely.) Both paths print the filled workbook and
+sidecar paths at the end. Everything the demo shows is built from the synthetic
+fixtures in `fixtures/` — never real customer material.
+
+**Build from source instead:** the image is also buildable locally — the
+`Dockerfile` installs the pinned environment and bakes the model at build time, so
+the first `docker build` downloads the environment once (the image is large by
+design):
 
 ```
 docker build -t qresp-demo .
 docker run -p 8501:8501 qresp-demo
 ```
 
-That builds an image with the exact pinned environment and the pre-built demo store
-(see demo_store/), fills a 24-question demo questionnaire using
---provider stub (no Anthropic call, no key), and opens the review screen at
-http://localhost:8501 — cited evidence on the left, an
-honest NOT FOUND IN PROVIDED DOCUMENTS row to see, and Approve/Edit/Reject for
-every row. The first docker build downloads the environment once (the image is
-large by design — it bakes in the local model stack); every docker run after that
-is instant and offline.
-
-Prefer no Docker? One command against the same pre-built store, with Python 3.12+ and
-the pinned requirements installed:
-
-```
-qresp demo
-```
-
-(First run may download the local embedding model — a few hundred MB, one time. The
-Docker image skips this entirely.) Both paths print the filled workbook and sidecar
-paths at the end. Everything the demo shows is built from the synthetic fixtures in
-fixtures/ — never real customer material.
 **Live demo:** a hosted, read-only version of the review screen over the same
 synthetic data is one Streamlit Community Cloud deploy away — see
-[\`docs/HOSTED-DEMO.md\`](docs/HOSTED-DEMO.md) for the one-time setup, and the
+[`docs/HOSTED-DEMO.md`](docs/HOSTED-DEMO.md) for the one-time setup, and the
 About panel of this repo for the current URL once deployed.
-
 
 ## What you get
 

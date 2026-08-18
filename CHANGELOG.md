@@ -10,8 +10,10 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 - **`qresp demo`**: one command to a filled workbook plus a running review
   screen, no API key and no model download — backed by a committed pre-built
-  store (`demo_store/`), and a `Dockerfile` so `docker run -p 8501:8501`
-  is the zero-setup path.
+  store (`demo_store/`) and a `Dockerfile`. The image is published to
+  `ghcr.io/patricr73/qresp-demo` (`latest` + version tag) by the release
+  workflow on tagged pushes, so `docker run -p 8501:8501
+  ghcr.io/patricr73/qresp-demo:latest` is the zero-setup path.
 - **Hosted read-only review screen**: `QRESP_REVIEW_READ_ONLY` freezes the UI
   (no approve/edit/export, frozen-sample banner); `streamlit_app.py` deploys it
   to Streamlit Community Cloud over the committed synthetic demo store
