@@ -8,11 +8,11 @@ you don't have.
 **Who it's for:** B2B companies that get handed CAIQ/VSAQ-style questionnaires by
 prospective enterprise customers and need a fast, honest first draft before a human
 reviews it.
-**What it costs you today:** a few cents of Claude API spend per question row, a CLI
-and (optionally) a local Streamlit review screen — no hosting, no account, no
-subscription. Measured 63% structural match on a 24-question set (20 real CAIQ
-questions plus an adversarial subset built to stress the no-fabrication goal). See
-the Results table below for the real numbers.
+**What it costs you today:** measured **~$0.55–0.60** of Claude API spend per
+24-question run (≈ **$7** for a 300-row SIG Lite), a CLI and (optionally) a local
+Streamlit review screen — no hosting, no account, no subscription. **9 of 24 rows
+still need a human; zero confirmed fabrications.** The measured baseline and every
+named wrong case: see Results below.
 
 [![Demo video — filling a questionnaire with the review screen](docs/demo-poster.png)](https://github.com/PatricR73/Questionnaire-Responder/releases/download/v0.1.0/demo.webm)
 
@@ -26,6 +26,14 @@ reads a company's own security documentation (policies, procedures, plans) and d
 first-pass answers to that spreadsheet automatically, citing exactly where each answer
 came from. A person still reviews every answer before it goes out. The tool's job is
 to make the first draft fast and honest, not to remove the human from the loop.
+
+| Measured on the 24-question eval set | |
+|---|---|
+| API spend | **~$0.55–0.60** per run (≈ **$7** for a 300-row SIG Lite) |
+| Rows still needing a human | **9 of 24** (7 honest abstentions + 2 other causes; zero confirmed fabrications) |
+
+Full breakdown and caveats: [What it costs](#what-it-costs-and-what-it-saves) below.
+
 
 ## Try it in 30 seconds
 
