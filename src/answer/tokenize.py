@@ -59,7 +59,7 @@ def _load_tokenizer() -> Tokenizer:
         if not path.exists():
             try:
                 path.parent.mkdir(parents=True, exist_ok=True)
-                response = httpx.get(_TOKENIZER_REMOTE_URL, timeout=60)
+                response = httpx.get(_TOKENIZER_REMOTE_URL, timeout=60, follow_redirects=True)
                 response.raise_for_status()
                 path.write_text(response.text, encoding="utf-8")
             except httpx.HTTPError as exc:
