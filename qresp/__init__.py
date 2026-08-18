@@ -134,7 +134,8 @@ class Pipeline:
     ) -> AnswerRunResult:
         """Answer a questionnaire against the store, exactly as 'qresp answer'
         would, and return the structured result. provider: anthropic | stub |
-        local (local needs an OpenAI-compatible endpoint; see --provider local)."""
+        openai-compatible (the legacy alias local still works and warns when the endpoint
+        is hosted; see --provider openai-compatible)."""
         self._activate()
         from src.pipeline import answer as answer_command
 

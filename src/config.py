@@ -101,13 +101,15 @@ class Config:
     # src/answer/library.py). Conservative by default; revisit with measured data.
     library_semantic_threshold: float = 0.75
     # C7: fully on-premise generation via any OpenAI-compatible endpoint (Ollama,
-    # vLLM, llama.cpp server) — --provider local. Defaults mirror
+    # vLLM, llama.cpp server, or a hosted OpenAI-compatible API) — the --provider
+    # openai-compatible transport (legacy alias: local). Defaults mirror
     # src/answer/local.py. The answer_library, citation grounding, and entailment
     # guarantees run identically in local mode; only the model changes.
     local_base_url: str = "http://localhost:11434/v1"
     local_model: str = "qwen2.5:7b-instruct"
-    # Auth for HOSTED OpenAI-compatible endpoints (DeepSeek et al.) used via
-    # --provider local. Read ONLY from QRESP_LOCAL_API_KEY (or a config file):
+    # Auth for HOSTED OpenAI-compatible endpoints (DeepSeek et al.) used via the
+    # openai-compatible transport. Read ONLY from
+    # QRESP_LOCAL_API_KEY (or a config file):
     # deliberately never a CLI flag — keys do not belong in shell history or
     # process listings. Empty means the endpoint is unauthenticated (Ollama,
     # vLLM, llama.cpp) and no Authorization header is sent.

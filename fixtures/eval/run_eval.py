@@ -265,7 +265,7 @@ def main():
         "--provider",
         type=str,
         default="anthropic",
-        help="Generation provider: anthropic (default), stub, or local (any OpenAI-compatible "
+        help="Generation provider: anthropic (default), stub, or openai-compatible (any OpenAI-compatible "
         "endpoint via QRESP_LOCAL_BASE_URL/QRESP_LOCAL_MODEL). The local provider lets the "
         "eval measure the fully-on-premise path (pack 3, C7) against the same scoring.",
     )

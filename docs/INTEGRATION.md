@@ -24,7 +24,7 @@ pipeline.ingest("path/to/evidence/")      # parse + chunk + embed (idempotent)
 result = pipeline.answer(
     "questionnaire.xlsx",
     "filled.xlsx",
-    provider="stub",                      # "anthropic" (needs ANTHROPIC_API_KEY) | "local"
+    provider="stub",                      # "anthropic" (needs ANTHROPIC_API_KEY) | "openai-compatible"
     limit=0,                              # 0 = every question row
     sheet="Security Questionnaire",       # optional: one tab of a multi-sheet workbook
 )

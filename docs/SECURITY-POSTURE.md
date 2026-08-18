@@ -42,8 +42,14 @@ policy text and answers are never committed to a repository by the tool.
   published in `EVAL.md`. With `QRESP_LOCAL_API_KEY` set, `--provider local` is a
   HOSTED OpenAI-compatible endpoint (DeepSeek et al.) and the question +
   retrieved passages leave your machine to that provider, under its terms — the
-  same boundary as the Anthropic path above. The key is read only from the
-  environment or a config file, never a CLI flag.
+  same boundary as the Anthropic path above. The transport flag is
+  `--provider openai-compatible`; `local` is a legacy alias that warns when the
+  base_url is not loopback/private. Note specifically: DeepSeek's service is
+  operated from the People's Republic of China — sending internal policy text
+  to it transmits that text to an entity under PRC jurisdiction, which is a
+  data-residency and legal decision the buyer must make explicitly and document,
+  not a default. The key is read only from the environment or a config file,
+  never a CLI flag.
 
 ## 3. The review UI
 

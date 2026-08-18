@@ -10,6 +10,7 @@ local mode, and these tests pin that.
 import json
 import threading
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 import httpx
 import pytest
@@ -18,6 +19,8 @@ from src.answer.answerer import AnswerStatus
 from src.answer.confidence import WEAK_MATCH_DISTANCE
 from src.answer.local import LocalAnswerer, LocalConfig
 from src.retrieval.hybrid_search import RetrievedChunk
+
+FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
 
 
 def _chunk(text="All network traffic is encrypted in transit using TLS 1.2 or higher."):
@@ -224,3 +227,49 @@ def test_local_without_key_sends_no_auth_and_keeps_ollama_json_keys():
     assert captured["body"]["format"] == "json"
     assert captured["body"]["response_format"] == {"type": "json_object"}
     server.shutdown()
+
+
+def test_is_local_address():
+    """The locality check behind the legacy-alias warning: loopback and private
+    addresses are local; hosted hostnames (and unresolvable ones) are not — the
+    word "local" must never be claimed for an endpoint that cannot be proven
+    local."""
+    from src.answer.local import _is_local_address
+
+    assert _is_local_address("http://localhost:11434/v1")
+    assert _is_local_address("http://127.0.0.1:8000/v1")
+    assert _is_local_address("http://[::1]:11434/v1")
+    assert _is_local_address("http://10.0.0.5:8080/v1")
+    assert _is_local_address("http://192.168.1.10:8000/v1")
+    assert _is_local_address("http://172.16.0.5:8000/v1")
+    assert not _is_local_address("https://api.deepseek.com/v1")
+    assert not _is_local_address("http://no-such-host-xyz.invalid/v1")
+
+
+def test_local_alias_warns_on_hosted_url(tmp_path, monkeypatch):
+    """--provider local (the legacy alias) must warn when pointed at a hosted
+    endpoint, because the name promises on-premise; --provider openai-compatible
+    (the accurate name) must not warn."""
+    from click.testing import CliRunner
+
+    from src.pipeline import cli
+
+    monkeypatch.setenv("QRESP_DATA_DIR", str(tmp_path / "data"))
+    monkeypatch.setenv("QRESP_LOCAL_BASE_URL", "https://api.deepseek.com/v1")
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+    base = [
+        "answer",
+        "--questionnaire",
+        str(FIXTURES / "eval" / "questionnaire_eval.xlsx"),
+        "--output",
+        str(tmp_path / "warn.xlsx"),
+        "--limit",
+        "0",
+        "--dry-run",
+    ]
+    warned = CliRunner().invoke(cli, base + ["--provider", "local"])
+    assert warned.exit_code == 0, warned.output
+    assert "legacy name" in warned.output
+    clean = CliRunner().invoke(cli, base + ["--provider", "openai-compatible"])
+    assert clean.exit_code == 0, clean.output
+    assert "legacy name" not in clean.output

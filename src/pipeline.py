@@ -657,7 +657,12 @@ def _add_stub_banner(ws, last_col: int) -> None:
     help="Override column detection entirely: --map question=C,answer=E,vocab=D (letters or numbers). "
     "Use after 'qresp inspect' when detection guesses wrong on a real file.",
 )
-@click.option("--provider", type=click.Choice(["anthropic", "stub", "local"]), default="anthropic", show_default=True)
+@click.option(
+    "--provider",
+    type=click.Choice(["anthropic", "stub", "openai-compatible", "local"]),
+    default="anthropic",
+    show_default=True,
+)
 @click.option(
     "--stub-fail-row",
     type=int,
@@ -739,6 +744,25 @@ def answer(
         cli_overrides["top_k"] = top_k
     cfg = load_config(config_file=config, cli_overrides=cli_overrides)
 
+    # The transport is named --provider openai-compatible (it can point at any
+    # /v1/chat/completions endpoint, hosted or local). --provider local is a
+    # LEGACY ALIAS whose name promises what only a genuinely local endpoint
+    # delivers: it warns when the configured base_url is not loopback/private,
+    # because the word "local" must never silently claim a hosted endpoint is
+    # on-premise (see src/answer/local.py and docs/SECURITY-POSTURE.md).
+    if provider == "local":
+        from src.answer.local import _is_local_address
+
+        if not _is_local_address(cfg.local_base_url):
+            click.echo(
+                "Warning: --provider local is the legacy name for the OpenAI-compatible "
+                "transport and implies an on-premise endpoint, but the configured base_url "
+                f"({cfg.local_base_url}) is NOT a loopback or private address — this is a HOSTED "
+                "endpoint, and the question and retrieved policy passages will leave this machine "
+                "to that provider under its terms. Use --provider openai-compatible (the "
+                "accurate name) or point the base_url at a local server (e.g. http://localhost:11434/v1)."
+            )
+
     answerer: Answerer
     if provider == "anthropic" and not dry_run:
         if not os.environ.get("ANTHROPIC_API_KEY"):
@@ -746,13 +770,13 @@ def answer(
                 "ANTHROPIC_API_KEY not set — export it before running with --provider anthropic (every row would fail identically). Use --provider stub if you want to test without a key."
             )
         answerer = AnthropicAnswerer(config=cfg)
-    elif provider == "local" and not dry_run:
-        # C7: fully on-premise generation via an OpenAI-compatible endpoint
-        # (Ollama, vLLM, llama.cpp server). No API key, nothing leaves the host;
-        # the citation grounding and entailment checks run identically (see
-        # src/answer/local.py). Configure with QRESP_LOCAL_BASE_URL /
-        # QRESP_LOCAL_MODEL or a config file.
-        from src.answer.local import LocalAnswerer, LocalConfig
+    elif provider in ("openai-compatible", "local") and not dry_run:
+        # Generation via any OpenAI-compatible /v1/chat/completions endpoint —
+        # Ollama/vLLM/llama.cpp on-premise, or a hosted API (DeepSeek et al.) with
+        # QRESP_LOCAL_API_KEY. The citation grounding and entailment checks run
+        # identically (see src/answer/local.py). Configure with QRESP_LOCAL_BASE_URL
+        # / QRESP_LOCAL_MODEL or a config file.
+        from src.answer.local import LocalAnswerer, LocalConfig, _is_local_address
 
         answerer = LocalAnswerer(
             LocalConfig(base_url=cfg.local_base_url, model=cfg.local_model, api_key=cfg.local_api_key),
@@ -760,7 +784,9 @@ def answer(
             entailment_check=cfg.entailment_check,
             entailment_model=cfg.local_model,
         )
-        click.echo(f"Using local model {cfg.local_model} at {cfg.local_base_url} — nothing leaves this machine.")
+        click.echo(f"Using OpenAI-compatible model {cfg.local_model} at {cfg.local_base_url}.")
+        if _is_local_address(cfg.local_base_url):
+            click.echo("  (on-premise endpoint: nothing leaves this machine)")
     else:
         answerer = StubAnswerer(fail_row=stub_fail_row, weak_match_distance=cfg.weak_match_distance)
 

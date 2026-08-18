@@ -314,7 +314,7 @@ workbook so it can never be mistaken for a real run's output.
 silently falls back to the stub if the key is missing — it errors instead, since every
 row would otherwise fail identically.
 
-### Running any OpenAI-compatible endpoint: `--provider local`
+### Running any OpenAI-compatible endpoint: `--provider openai-compatible`
 
 Some buyers cannot send internal policy text to a third-party API at all —
 regulated industries, government suppliers, and the security teams most likely to
@@ -324,13 +324,17 @@ generation step is swappable too:
 
 ```
 ollama pull qwen2.5:7b-instruct
-qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider local
+qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider openai-compatible
 # or point at any OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp server):
 QRESP_LOCAL_BASE_URL=http://localhost:11434/v1 QRESP_LOCAL_MODEL=qwen2.5:7b-instruct \
-  qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider local
+  qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider openai-compatible
 ```
 
-With `--provider local` at a LOCAL endpoint (no `QRESP_LOCAL_API_KEY`), nothing
+`--provider local` is a legacy alias for this flag: it still works, but it warns when the
+configured base_url is not a loopback/private address — the name promises on-premise, and a
+hosted endpoint must never silently inherit that claim.
+
+With `--provider openai-compatible` at a LOCAL endpoint (no `QRESP_LOCAL_API_KEY`), nothing
 leaves the machine: no API key, no external call. The guarantees do not weaken —
 the same no-fabrication prompt and answer schema, the same verbatim citation
 cross-check, and the same (optional, flag-gated) entailment check run against the
@@ -340,7 +344,7 @@ baseline in [`EVAL.md`](EVAL.md) for the real numbers, which are published rathe
 than hidden. Some buyers will trade quality for boundary; the numbers exist so
 that trade is informed.
 
-The same `--provider local` speaks to **hosted OpenAI-compatible endpoints**
+The same flag speaks to **hosted OpenAI-compatible endpoints**
 (DeepSeek et al.), which require auth — the key is read ONLY from
 `QRESP_LOCAL_API_KEY` (or a config file), deliberately never a CLI flag, so it
 never lands in shell history:
@@ -348,7 +352,7 @@ never lands in shell history:
 ```
 QRESP_LOCAL_BASE_URL=https://api.deepseek.com/v1 QRESP_LOCAL_MODEL=deepseek-chat \
 QRESP_LOCAL_API_KEY=sk-... \
-  qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider local
+  qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider openai-compatible
 ```
 
 With a key set, requests carry `Authorization: Bearer <key>`, JSON mode uses

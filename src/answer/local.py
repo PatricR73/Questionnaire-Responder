@@ -1,32 +1,50 @@
-"""Local-model answerer: generation via any OpenAI-compatible chat API.
+"""OpenAI-compatible transport: generation via any /v1/chat/completions endpoint.
 
 Pack 3, C7. A meaningful share of this market cannot send internal policy text to a
 third-party API at all — regulated industries, government suppliers, and the
 security teams most likely to be handed these questionnaires. Everything except
 generation is already local (parsing, chunking, embedding, retrieval, the reranker,
 the review UI), and the Answerer interface exists precisely to make the generation
-step swappable. Ollama and vLLM both expose /v1/chat/completions, so one provider
+step swappable. Ollama and vLLM both expose /v1/chat/completions, so one transport
 covers both.
 
-The guarantees are pipeline properties, not model properties, and local mode must
-not weaken them:
+**What is true of the TRANSPORT — every endpoint this provider can point at**
+(Ollama, vLLM, llama.cpp, or a hosted OpenAI-compatible API such as DeepSeek):
 
 - The same no-fabrication SYSTEM_PROMPT and answer schema from generate.py are
   reused verbatim, with JSON mode + the same defensive validation and one
   corrective retry (MalformedAnswerError on final failure, per-row isolated
   upstream).
 - The verbatim citation cross-check (cross_check_confidence) runs unchanged on
-  local output — it is provider-agnostic and never trusts the model.
+  this transport's output — it is provider-agnostic and never trusts the model.
 - The optional entailment check (entailment_check flag) runs as an independent
-  second call to the same local endpoint, receiving ONLY the answer and cited
-  sentences. Caveat, stated honestly: the local judge is the same local model, so
-  it is a weaker judge than the hosted check's separate model — the structural
-  isolation (separate call, no question, no chunks) is preserved, not the model
-  independence.
+  second call to the same endpoint, receiving ONLY the answer and cited
+  sentences. Caveat, stated honestly: the judge is the same model (no second one
+  is configured), so it is a weaker judge than the hosted path's separate model —
+  the structural isolation is preserved, not the model independence.
+- With an api key set (QRESP_LOCAL_API_KEY), requests authenticate with
+  Authorization: Bearer <key>, JSON mode uses response_format only (the
+  Ollama-only "format" key is dropped — a strict hosted API can 400 on it), and
+  the prompt carries the literal word "json" that DeepSeek's JSON mode requires.
+
+**What is true ONLY of a genuinely local endpoint** (base_url on loopback or a
+private address — e.g. Ollama/vLLM/llama.cpp on your machine or LAN):
+
+- Nothing leaves the machine or network: no third party ever receives the
+  question or the retrieved policy passages, and no api key is needed.
+
+**What is NOT true when the endpoint is hosted** (e.g. api.deepseek.com):
+
+- Policy text DOES leave your machine to that provider, under its terms — exactly
+  the boundary of the Anthropic path. The CLI flag for this transport is
+  --provider openai-compatible; the legacy name --provider local is kept as an
+  alias that WARNS when the configured base_url is not loopback/private, because
+  the word "local" must never silently claim a hosted endpoint is on-premise.
+  See _is_local_address.
 
 Quality will be lower than the hosted Claude path for a given model size, and that
 is the point of publishing it: "fully local, here's the accuracy cost" is a better
-pitch than silence.
+pitch than silence — but only a genuinely-local endpoint gets to make that claim.
 """
 
 import json
@@ -70,6 +88,40 @@ class LocalConfig:
     # header is sent then. Comes from Config.local_api_key (QRESP_LOCAL_API_KEY).
     api_key: str = ""
     temperature: float = 0.0  # deterministic output; eval variance is measured, not assumed away
+
+
+def _is_local_address(base_url: str) -> bool:
+    """True when the endpoint is on loopback or a private network — the only case
+    where the word "local" is accurate for this transport.
+
+    Loopback hosts (localhost, 127.x, ::1) and RFC1918/private/IPv6-ULA addresses
+    count as local; anything else — including a hostname that does not resolve —
+    is treated as HOSTED, because "cannot prove local" must never be reported as
+    local. Used by the pipeline to warn when the legacy --provider local alias is
+    pointed at a hosted endpoint (e.g. api.deepseek.com)."""
+    from urllib.parse import urlparse
+
+    host = (urlparse(base_url).hostname or "").lower()
+    if host in ("localhost", "127.0.0.1", "::1") or host.startswith("127."):
+        return True
+    import ipaddress
+    import socket
+
+    candidates: list = []
+    try:
+        candidates.append(ipaddress.ip_address(host))
+    except ValueError:
+        pass
+    if not candidates:
+        try:
+            for info in socket.getaddrinfo(host, None):
+                try:
+                    candidates.append(ipaddress.ip_address(info[4][0]))
+                except ValueError:
+                    pass
+        except OSError:
+            return False  # cannot resolve -> cannot prove local
+    return any(ip.is_loopback or ip.is_private or ip.is_link_local for ip in candidates)
 
 
 def _usage_from_response(response_json: dict) -> tuple[int, int]:

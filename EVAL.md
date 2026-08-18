@@ -201,12 +201,12 @@ label it was being measured against. Both corrections were made because the evid
 said the label was wrong, never because the system disagreed with it — see
 `fixtures/eval/LABELING_GUIDE.md` and the relevant commits for the reasoning.
 
-## Fully-on-premise baseline: --provider local
+## Fully-on-premise baseline: --provider openai-compatible
 
 Pack 3, C7. Some buyers cannot send internal policy text to a third-party API at
 all — regulated industries, government suppliers, and the security teams most
 likely to be handed these questionnaires. Everything except generation is already
-local, and `--provider local` (any OpenAI-compatible endpoint: Ollama, vLLM,
+local, and `--provider openai-compatible` (any OpenAI-compatible endpoint: Ollama, vLLM,
 llama.cpp server) makes the generation step local too, with the same no-fabrication
 prompt, the same answer schema, the same verbatim citation cross-check, and the
 same (flag-gated) entailment check. The honest question is what that costs, so it
@@ -216,7 +216,7 @@ was measured, not assumed:
 run at temperature 0:**
 
 ```
-QRESP_LOCAL_MODEL=qwen2.5:0.5b python fixtures/eval/run_eval.py --provider local
+QRESP_LOCAL_MODEL=qwen2.5:0.5b python fixtures/eval/run_eval.py --provider openai-compatible
 ```
 
 | | Anthropic baseline (hosted) | Local qwen2.5:0.5b |
