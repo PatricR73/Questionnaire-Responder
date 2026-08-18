@@ -40,7 +40,7 @@ dev = [
 qresp = "src.pipeline:cli"
 
 [tool.setuptools.packages.find]
-include = ["src*"]
+include = ["src*", "qresp*"]
 
 # Replaces the deleted root conftest.py, whose only purpose was putting the repo
 # root on sys.path so `python -m src.pipeline` and the src.* imports work from

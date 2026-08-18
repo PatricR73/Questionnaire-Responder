@@ -454,6 +454,33 @@ def inspect(questionnaire: Path, sheet: str | None):
     click.echo("If detection is wrong on a real file, re-run answer with --map question=C,answer=E,vocab=D.")
 
 
+
+@cli.command()
+@click.option("--port", type=int, default=8000, show_default=True)
+@click.option("--host", type=str, default="127.0.0.1", show_default=True)
+def serve(port: int, host: str):
+    """Run the integration HTTP service (pack 3, C10).
+
+    Submit a questionnaire run, poll its status, fetch its structured results —
+    the three operations an intake flow needs. Thin HTTP wrapper over the
+    qresp.Pipeline surface; no auth built in (bind to localhost by default, put a
+    real authenticating proxy in front for anything beyond a trusted network).
+    See docs/INTEGRATION.md.
+
+    qresp serve --port 8000
+    curl -X POST localhost:8000/runs -H 'Content-Type: application/json' \\
+      -d '{"questionnaire": "fixtures/eval/questionnaire_eval.xlsx", "provider": "stub"}'
+    curl localhost:8000/runs/<id>
+    curl localhost:8000/runs/<id>/results
+    """
+    import uvicorn
+
+    from src.service import app
+
+    click.echo(f"Serving the integration API on http://{host}:{port} — see docs/INTEGRATION.md.")
+    uvicorn.run(app, host=host, port=port)
+
+
 def _aggregate_sub_results(sub_results):
     """Combine per-sub-question results into ONE row-level result (B3).
 
