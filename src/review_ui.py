@@ -11,6 +11,8 @@ only on "edited". drafted_answer is never modified — the eval harness scores a
 it, and overwriting it would make past baselines unreproducible.
 """
 
+import difflib
+import html
 import json
 import math
 import os
@@ -119,6 +121,43 @@ def _highlight_cited(text: str, cited_sentences: list[str]) -> str:
     return display
 
 
+def _inline_diff(before: str, after: str) -> str:
+    """Word-level inline diff between the drafted and the human-edited answer,
+    as HTML for st.markdown(unsafe_allow_html=True): removed words struck through
+    in red, added words highlighted green — so the reviewer sees exactly what the
+    human changed. Callers only render it when the two texts actually differ (a
+    byte-identical edit block reads as fabricated)."""
+    before_words, after_words = before.split(), after.split()
+    parts = []
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, before_words, after_words).get_opcodes():
+        if tag == "equal":
+            parts.append(html.escape(" ".join(before_words[i1:i2])))
+        elif tag == "delete":
+            parts.append(
+                '<span style="color:#c62828;text-decoration:line-through">'
+                + html.escape(" ".join(before_words[i1:i2]))
+                + "</span>"
+            )
+        elif tag == "insert":
+            parts.append(
+                '<span style="background-color:#c8e6c9;color:#1b5e20">'
+                + html.escape(" ".join(after_words[j1:j2]))
+                + "</span>"
+            )
+        elif tag == "replace":
+            parts.append(
+                '<span style="color:#c62828;text-decoration:line-through">'
+                + html.escape(" ".join(before_words[i1:i2]))
+                + "</span>"
+            )
+            parts.append(
+                '<span style="background-color:#c8e6c9;color:#1b5e20">'
+                + html.escape(" ".join(after_words[j1:j2]))
+                + "</span>"
+            )
+    return " ".join(parts)
+
+
 def render_row(conn, run_id, row, chunks_by_id: dict):
     emoji, label = BADGES.get(row["final_confidence"], ("❔", row["final_confidence"] or "UNKNOWN"))
     reviewed = bool(row["human_action"])
@@ -160,9 +199,13 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
     with left:
         st.markdown("**Drafted answer**")
         st.write(row["drafted_answer"] or "*(none — no supporting evidence found)*")
-        if row["reviewed_answer"]:
+        # Only show an edit block when the human actually changed the text — a
+        # reviewed_answer byte-identical to the draft reads as a fabricated edit
+        # (the demo store used to ship such rows). When they differ, render an
+        # inline diff so the reviewer sees exactly what the human changed.
+        if row["reviewed_answer"] and row["reviewed_answer"] != row["drafted_answer"]:
             st.markdown("**Human-edited answer**")
-            st.write(row["reviewed_answer"])
+            st.markdown(_inline_diff(row["drafted_answer"] or "", row["reviewed_answer"]), unsafe_allow_html=True)
     with right:
         st.markdown("**Cited evidence**")
         cited_ids = json.loads(row["cited_chunk_ids"]) if row["cited_chunk_ids"] else []
@@ -205,6 +248,12 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
             st.rerun()
 
     st.divider()
+
+
+def _friendly_run_date(created_at: str | None) -> str:
+    """The run's date as YYYY-MM-DD for visitor-facing labels; the stored
+    created_at is a full ISO timestamp and only the date part is useful here."""
+    return (created_at or "")[:10]
 
 
 def _reviewed_export_path(output_path: str) -> Path:
@@ -280,13 +329,29 @@ def main():
         )
 
     runs = conn.execute(
-        "SELECT id, source_path, output_path, created_at, run_config FROM questionnaire_runs ORDER BY created_at DESC"
+        """
+        SELECT id, source_path, output_path, created_at, run_config,
+               (SELECT COUNT(*) FROM answers WHERE run_id = questionnaire_runs.id) AS question_count
+        FROM questionnaire_runs ORDER BY created_at DESC
+        """
     ).fetchall()
     if not runs:
         st.info("No questionnaire runs found. Run `python -m src.pipeline answer ...` first.")
         return
 
-    run_options = {f"{r['source_path']}  —  {r['created_at']}": r["id"] for r in runs}
+    # Read-only mode serves the hosted demo over the committed demo store, whose
+    # stored source/output paths are absolute paths on the author's machine — they
+    # must never reach a visitor. Label the run by what the visitor can actually
+    # use (question count + run date) instead; the full path stays in the
+    # non-read-only selector, where a reviewer needs to see which file a run came
+    # from.
+    if READ_ONLY:
+        run_options = {
+            f"Frozen sample — {r['question_count']}-question CAIQ set ({_friendly_run_date(r['created_at'])})": r["id"]
+            for r in runs
+        }
+    else:
+        run_options = {f"{r['source_path']}  —  {r['created_at']}": r["id"] for r in runs}
     selected = st.sidebar.selectbox("Run", list(run_options.keys()))
     run_id = run_options[selected]
     run_row = next(r for r in runs if r["id"] == run_id)
@@ -349,8 +414,22 @@ def main():
 
     filter_choice = st.sidebar.selectbox("Filter", ["All", "High", "Low", "Not found", "Error", "Unreviewed"])
 
-    st.progress(reviewed_count / total if total else 0.0)
-    st.write(f"**{reviewed_count} / {total} rows reviewed**")
+    if READ_ONLY:
+        # The demo is a finished sample, not a half-finished review: "5 / 24 rows
+        # reviewed" over a half-filled progress bar reads as an abandoned task,
+        # when the truth is 5 answered from evidence and 19 honest abstentions
+        # where the documentation didn't cover the question. The abstentions are
+        # the product working correctly (no fabrication) — say that instead.
+        answered = sum(1 for r in rows if r["final_confidence"] in ("high", "low"))
+        abstentions = sum(1 for r in rows if r["final_confidence"] == "none")
+        st.write(
+            f"**{answered} answered from evidence, {abstentions} honest abstentions** — "
+            "questions the provided documentation doesn't cover are left as NOT FOUND "
+            "rather than fabricated. That's the product working as intended."
+        )
+    else:
+        st.progress(reviewed_count / total if total else 0.0)
+        st.write(f"**{reviewed_count} / {total} rows reviewed**")
 
     # P27: load every cited chunk for the whole run in one query, before the render
     # loop — the loop used to issue one query per cited chunk per row.

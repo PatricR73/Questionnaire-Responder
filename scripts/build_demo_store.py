@@ -18,7 +18,9 @@ step, and no model download. This script is the reproducible way it was built:
    marked low-confidence because the evidence covers key management but never
    mentions an HSM; row 9 is a documented negative (customers cannot manage their
    own keys). A human review trail (approved/edited) is recorded exactly as the
-   review UI would.
+   review UI would — and row 22 carries a GENUINE reviewer edit (its
+   reviewed_answer differs from the draft), so the review screen renders a real
+   inline diff instead of a byte-identical "edit" block that reads as fabricated.
 
    The store is a frozen SAMPLE, not a measured run: the eval harness must never
    be pointed at demo_store/ (drafted_answer on the five curated rows was not
@@ -43,7 +45,15 @@ QUESTIONNAIRE = REPO_ROOT / "fixtures" / "eval" / "questionnaire_eval.xlsx"
 
 # Curated drafts, grounded in the verbatim chunks the stub run cited (see the
 # review UI / store.db for the exact chunk text). Keyed by sheet row index.
-# (answer, final_confidence, self_confidence, polarity, cited_sentence, human_action)
+# (answer, reviewed_answer, final_confidence, self_confidence, polarity,
+#  cited_sentence, human_action)
+#
+# reviewed_answer is None for approved rows (the real review UI never writes a
+# reviewed_answer for "approved" — record_human_review only sets it on "edited"),
+# so the UI must not show a Human-edited block for them. Row 22 is the one
+# genuine edit: the reviewer tightened the draft's hedge into an explicit
+# LOW-confidence flag, so the review screen can render a real inline diff
+# instead of a byte-identical "edit".
 CURATION = {
     2: (
         (
@@ -51,6 +61,7 @@ CURATION = {
             "using TLS 1.2 or higher, and internal service-to-service traffic within the production VPC "
             "is additionally encrypted using mutual TLS."
         ),
+        None,
         "high",
         "high",
         "affirms",
@@ -62,6 +73,7 @@ CURATION = {
             "Yes. Production databases are backed up hourly with 30-day retention, and backups are stored "
             "in a separate cloud region from the primary production environment."
         ),
+        None,
         "high",
         "high",
         "affirms",
@@ -73,6 +85,7 @@ CURATION = {
             "No. The access control policy states that customers do not have the ability to manage their "
             "own encryption keys; all key management is performed internally by the security team."
         ),
+        None,
         "high",
         "high",
         "denies",
@@ -85,6 +98,12 @@ CURATION = {
             "The provided evidence does not state whether the key management service is backed by a "
             "hardware security module (HSM), so this row should be confirmed with the security team before sending."
         ),
+        (
+            "Encryption keys are managed via a dedicated key management service and rotated annually. "
+            "The provided evidence does not state whether the key management service is backed by a "
+            "hardware security module (HSM); this item is marked LOW confidence and requires confirmation "
+            "with the security team before sending."
+        ),
         "low",
         "high",
         "partial",
@@ -96,6 +115,7 @@ CURATION = {
             "Yes. Backups are stored off-site in a separate cloud region from the primary production "
             "environment, with hourly backups and 30-day retention."
         ),
+        None,
         "high",
         "high",
         "affirms",
@@ -143,11 +163,11 @@ def main() -> None:
     conn = sqlite3.connect(STORE / "store.db")
     run_id = conn.execute("SELECT MAX(id) FROM questionnaire_runs").fetchone()[0]
     now = __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()
-    for row_index, (answer, final, self_conf, polarity, cited_sentence, action) in CURATION.items():
+    for row_index, (answer, reviewed, final, self_conf, polarity, cited_sentence, action) in CURATION.items():
         conn.execute(
             "UPDATE answers SET drafted_answer=?, reviewed_answer=?, final_confidence=?, "
             "self_confidence=?, polarity=?, cited_sentences=? WHERE run_id=? AND row_index=?",
-            (answer, answer, final, self_conf, polarity, json.dumps([cited_sentence]), run_id, row_index),
+            (answer, reviewed, final, self_conf, polarity, json.dumps([cited_sentence]), run_id, row_index),
         )
         # Review event exactly as the review UI records it (confidence='review').
         conn.execute(
