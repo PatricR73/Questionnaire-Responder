@@ -256,6 +256,27 @@ Approve/Reject record the decision; Edit saves your corrected text separately fr
 model's original answer, so the eval-harness baselines in [`EVAL.md`](EVAL.md) stay
 reproducible against what the model actually produced.
 
+### 4. Generate a documentation gap report
+
+```
+qresp gap-report --run-id N
+```
+
+The rows the pipeline could not answer are, individually, blank cells — collectively
+they are a **documentation gap analysis**: "your policy set does not document:
+business continuity test cadence, sub-processor inventory, encryption key rotation,
+incident notification SLA." For every NOT_FOUND row the command re-runs local
+retrieval (free, deterministic, zero API calls) to show the closest evidence that
+WAS found and its distance, groups gaps by questionnaire domain, ranks the most
+affected domains, and reports the flagged-low rows as a second section ("documented
+but weakly supported"). Outputs are a Markdown report and an XLSX workbook next to
+the run's other artifacts. A committed sample is in
+[`docs/sample/gap_report_demo.md`](docs/sample/gap_report_demo.md).
+
+This is a second product hiding in the NOT_FOUND rows: the pitch stops being "fill
+this sheet faster" and becomes "find out what you need to write before a customer
+asks."
+
 ## What leaves your machine
 
 This tool's stated buyer is a B2B security team, and the first question that buyer
