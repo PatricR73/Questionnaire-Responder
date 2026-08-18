@@ -460,6 +460,15 @@ actual `sys.path` setup (not just a curl against the running server, which never
 triggers real script execution and would not have caught this) — regression test for
 `streamlit run src/review_ui.py` failing with `ModuleNotFoundError` on a fresh clone.
 
+## Case study
+
+How the no-fabrication constraint, the eval-before-tuning discipline, and the
+rejected tuning pass came to be — including the three things that turned out
+differently than expected: [**What building a no-fabrication RAG pipeline taught
+us about saying "I don't know"**](docs/CASE-STUDY.md). Publishable as a blog post;
+a client evaluating the repo learns more about how engineering decisions are made
+under uncertainty from that page than from any feature list.
+
 ## Fixtures
 
 Everything under `fixtures/` is synthetic test data, invented for this repository —
