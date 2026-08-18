@@ -755,7 +755,7 @@ def answer(
         from src.answer.local import LocalAnswerer, LocalConfig
 
         answerer = LocalAnswerer(
-            LocalConfig(base_url=cfg.local_base_url, model=cfg.local_model),
+            LocalConfig(base_url=cfg.local_base_url, model=cfg.local_model, api_key=cfg.local_api_key),
             weak_match_distance=cfg.weak_match_distance,
             entailment_check=cfg.entailment_check,
             entailment_model=cfg.local_model,

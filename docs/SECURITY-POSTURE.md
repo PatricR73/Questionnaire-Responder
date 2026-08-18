@@ -26,17 +26,24 @@ policy text and answers are never committed to a repository by the tool.
 
 - **Runs entirely locally:** parsing, chunking, embedding, retrieval, the
   confidence cross-check, the entailment check (hosted path only), the review UI,
-  the gap report, and — with `--provider local` — generation too.
+  the gap report, and — with `--provider local` pointed at a LOCAL endpoint
+  (Ollama/vLLM/llama.cpp) — generation too.
 - **Sent to the Anthropic API — only during `answer` with the default provider:**
   for each question row, the system prompt, the question text, and the retrieved
   evidence passages (chunks of your policies). Nothing else: no full documents, no
   workbook contents beyond the question and the retrieved passages. `ingest`,
-  `--dry-run`, the review UI, the gap report, and `--provider local` make no
-  external calls at all. Anthropic's data-retention terms apply to what is sent;
+  `--dry-run`, the review UI, the gap report, and `--provider local` pointed at a
+  LOCAL endpoint make no external calls at all. Anthropic's data-retention terms
+  apply to what is sent;
   read them directly: <https://docs.anthropic.com/en/docs/legal/data-usage>.
-- **`--provider local` (Ollama/vLLM/llama.cpp): nothing leaves the machine.**
-  This is the option for regulated industries and government suppliers; the
-  measured quality trade is published in `EVAL.md`.
+- **`--provider local` at a LOCAL endpoint (Ollama/vLLM/llama.cpp, no
+  `QRESP_LOCAL_API_KEY`): nothing leaves the machine.** This is the option for
+  regulated industries and government suppliers; the measured quality trade is
+  published in `EVAL.md`. With `QRESP_LOCAL_API_KEY` set, `--provider local` is a
+  HOSTED OpenAI-compatible endpoint (DeepSeek et al.) and the question +
+  retrieved passages leave your machine to that provider, under its terms — the
+  same boundary as the Anthropic path above. The key is read only from the
+  environment or a config file, never a CLI flag.
 
 ## 3. The review UI
 

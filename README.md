@@ -314,7 +314,7 @@ workbook so it can never be mistaken for a real run's output.
 silently falls back to the stub if the key is missing — it errors instead, since every
 row would otherwise fail identically.
 
-### Running fully on-premise: `--provider local`
+### Running any OpenAI-compatible endpoint: `--provider local`
 
 Some buyers cannot send internal policy text to a third-party API at all —
 regulated industries, government suppliers, and the security teams most likely to
@@ -330,14 +330,36 @@ QRESP_LOCAL_BASE_URL=http://localhost:11434/v1 QRESP_LOCAL_MODEL=qwen2.5:7b-inst
   qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider local
 ```
 
-With `--provider local` nothing leaves the machine: no API key, no external call.
-The guarantees do not weaken — the same no-fabrication prompt and answer schema,
-the same verbatim citation cross-check, and the same (optional, flag-gated)
-entailment check run against the local model. The honest caveat, measured: a local
-model's answer quality is lower than the hosted Claude path's for a given model
-size — see the local-model baseline in [`EVAL.md`](EVAL.md) for the real numbers,
-which are published rather than hidden. Some buyers will trade quality for
-boundary; the numbers exist so that trade is informed.
+With `--provider local` at a LOCAL endpoint (no `QRESP_LOCAL_API_KEY`), nothing
+leaves the machine: no API key, no external call. The guarantees do not weaken —
+the same no-fabrication prompt and answer schema, the same verbatim citation
+cross-check, and the same (optional, flag-gated) entailment check run against the
+local model. The honest caveat, measured: a local model's answer quality is lower
+than the hosted Claude path's for a given model size — see the local-model
+baseline in [`EVAL.md`](EVAL.md) for the real numbers, which are published rather
+than hidden. Some buyers will trade quality for boundary; the numbers exist so
+that trade is informed.
+
+The same `--provider local` speaks to **hosted OpenAI-compatible endpoints**
+(DeepSeek et al.), which require auth — the key is read ONLY from
+`QRESP_LOCAL_API_KEY` (or a config file), deliberately never a CLI flag, so it
+never lands in shell history:
+
+```
+QRESP_LOCAL_BASE_URL=https://api.deepseek.com/v1 QRESP_LOCAL_MODEL=deepseek-chat \
+QRESP_LOCAL_API_KEY=sk-... \
+  qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider local
+```
+
+With a key set, requests carry `Authorization: Bearer <key>`, JSON mode uses
+`response_format` only (the Ollama-only `format` key is dropped — a strict hosted
+API can 400 on it), and the prompt is augmented with the literal word "json" that
+DeepSeek's JSON mode requires. The boundary is the same as the Anthropic path:
+with a hosted endpoint, the question and retrieved passages leave your machine to
+that provider under its terms. `--dry-run` cost estimates always use the
+configurable rate card (`QRESP_INPUT_PRICE_PER_MTOK` / `QRESP_OUTPUT_PRICE_PER_MTOK`)
+— set it to the provider's rates, since DeepSeek's are roughly an order of
+magnitude below Claude's and the estimate is only as good as the card.
 
 ### Supplying `ANTHROPIC_API_KEY`
 

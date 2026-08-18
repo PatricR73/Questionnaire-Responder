@@ -1,4 +1,4 @@
-"""Local-model answerer: fully on-premise generation via an OpenAI-compatible chat API.
+"""Local-model answerer: generation via any OpenAI-compatible chat API.
 
 Pack 3, C7. A meaningful share of this market cannot send internal policy text to a
 third-party API at all — regulated industries, government suppliers, and the
@@ -54,11 +54,21 @@ DEFAULT_BASE_URL = "http://localhost:11434/v1"  # Ollama's OpenAI-compatible end
 DEFAULT_MODEL = "qwen2.5:7b-instruct"
 REQUEST_TIMEOUT_SECONDS = 120.0  # local models are slower than hosted APIs; do not time out a 7B on a laptop
 
+# Hosted OpenAI-compatible APIs (DeepSeek et al.) require the literal word "json"
+# in the prompt for JSON mode. SYSTEM_PROMPT — shared with the Anthropic path and
+# part of the published eval contract — deliberately does not contain it, so the
+# hint is appended ONLY to requests that carry an api key (hosted endpoints).
+_HOSTED_JSON_MODE_HINT = "\n\nRespond in JSON format (a single JSON object)."
+
 
 @dataclass(frozen=True)
 class LocalConfig:
     base_url: str = DEFAULT_BASE_URL
     model: str = DEFAULT_MODEL
+    # Auth for HOSTED OpenAI-compatible endpoints (DeepSeek et al.). Empty for
+    # unauthenticated local endpoints (Ollama, vLLM, llama.cpp) — no Authorization
+    # header is sent then. Comes from Config.local_api_key (QRESP_LOCAL_API_KEY).
+    api_key: str = ""
     temperature: float = 0.0  # deterministic output; eval variance is measured, not assumed away
 
 
@@ -74,7 +84,9 @@ def _usage_from_response(response_json: dict) -> tuple[int, int]:
 
 
 class LocalAnswerer(Answerer):
-    """Generation via any OpenAI-compatible local endpoint (Ollama, vLLM, llama.cpp server)."""
+    """Generation via any OpenAI-compatible endpoint: a local server (Ollama, vLLM,
+    llama.cpp) with no auth, or a hosted one (DeepSeek et al.) authenticated with
+    an api key (QRESP_LOCAL_API_KEY)."""
 
     provider_name = "local"
 
@@ -96,22 +108,39 @@ class LocalAnswerer(Answerer):
 
     def _post_chat(self, user_content: str, *, model: str | None = None, max_tokens: int = 1024) -> dict:
         """One POST to /chat/completions; raises httpx.HTTPError on transport/status
-        failures (retried by the caller with backoff)."""
+        failures (retried by the caller with backoff).
+
+        Two endpoint classes, two request shapes:
+        - No api key (Ollama / vLLM / llama.cpp): send BOTH the Ollama-only
+          "format": "json" key and the vLLM "response_format" key — each local
+          server ignores the one it does not understand.
+        - api key set (hosted OpenAI-compatible: DeepSeek et al.): send
+          Authorization: Bearer <key>, JSON mode via response_format ONLY (a
+          strict hosted API can 400 on the unknown Ollama "format" key), and
+          append the JSON-mode hint to the user message — DeepSeek requires the
+          literal word "json" in the prompt, and SYSTEM_PROMPT does not contain it.
+        """
         payload = {
             "model": model or self._config.model,
             "messages": [
                 {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_content},
+                {
+                    "role": "user",
+                    "content": user_content + (_HOSTED_JSON_MODE_HINT if self._config.api_key else ""),
+                },
             ],
             "temperature": self._config.temperature,
             "max_tokens": max_tokens,
             "stream": False,
-            # Ollama accepts format="json"; vLLM accepts response_format json_object.
-            # request both keys — each server ignores the one it does not understand.
-            "format": "json",
-            "response_format": {"type": "json_object"},
         }
-        response = self._client.post(f"{self._config.base_url}/chat/completions", json=payload)
+        headers = None
+        if self._config.api_key:
+            headers = {"Authorization": f"Bearer {self._config.api_key}"}
+            payload["response_format"] = {"type": "json_object"}
+        else:
+            payload["format"] = "json"
+            payload["response_format"] = {"type": "json_object"}
+        response = self._client.post(f"{self._config.base_url}/chat/completions", json=payload, headers=headers)
         response.raise_for_status()
         return response.json()
 
@@ -187,15 +216,24 @@ class LocalAnswerer(Answerer):
             "model": self._entailment_model,
             "messages": [
                 {"role": "system", "content": ENT_SYSTEM_PROMPT},
-                {"role": "user", "content": ent_user_message(answer, cited_sentences)},
+                {
+                    "role": "user",
+                    "content": ent_user_message(answer, cited_sentences)
+                    + (_HOSTED_JSON_MODE_HINT if self._config.api_key else ""),
+                },
             ],
             "temperature": self._config.temperature,
             "max_tokens": 256,
             "stream": False,
-            "format": "json",
-            "response_format": {"type": "json_object"},
         }
-        response = self._client.post(f"{self._config.base_url}/chat/completions", json=payload)
+        headers = None
+        if self._config.api_key:
+            headers = {"Authorization": f"Bearer {self._config.api_key}"}
+            payload["response_format"] = {"type": "json_object"}
+        else:
+            payload["format"] = "json"
+            payload["response_format"] = {"type": "json_object"}
+        response = self._client.post(f"{self._config.base_url}/chat/completions", json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()
         in_tok, out_tok = _usage_from_response(data)

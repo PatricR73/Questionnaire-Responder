@@ -50,10 +50,12 @@ class _StubHandler(BaseHTTPRequestHandler):
 
     responses = []  # noqa: RUF012 — per-test mutable canned responses
     status_code = 200
+    captured = []  # noqa: RUF012 — per-test request log: {authorization, body}
 
     def do_POST(self):
         length = int(self.headers.get("Content-Length", 0))
-        self.rfile.read(length)
+        raw = self.rfile.read(length).decode()
+        self.captured.append({"authorization": self.headers.get("Authorization"), "body": json.loads(raw)})
         body = self.responses.pop(0) if self.responses else {"error": "no canned response"}
         data = json.dumps(body).encode()
         self.send_response(self.status_code)
@@ -67,16 +69,17 @@ class _StubHandler(BaseHTTPRequestHandler):
 
 
 def _serve(responses, status_code=200):
-    handler = type("H", (_StubHandler,), {"responses": responses, "status_code": status_code})
+    handler = type("H", (_StubHandler,), {"responses": responses, "status_code": status_code, "captured": []})
     server = HTTPServer(("127.0.0.1", 0), handler)
+    server.handler_class = handler  # tests read handler_class.captured for request assertions
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     return server
 
 
-def _answerer(server):
+def _answerer(server, api_key=""):
     host, port = server.server_address
-    return LocalAnswerer(LocalConfig(base_url=f"http://{host}:{port}/v1", model="test-model"))
+    return LocalAnswerer(LocalConfig(base_url=f"http://{host}:{port}/v1", model="test-model", api_key=api_key))
 
 
 def _openai_response(payload_dict, usage=None):
@@ -188,4 +191,36 @@ def test_local_entailment_judge_downgrades():
     result = answerer.answer_question("Are communications encrypted in transit?", [_chunk()])
     assert result.status == AnswerStatus.NOT_FOUND
     assert result.entailment_input_tokens == 4
+    server.shutdown()
+
+
+def test_local_api_key_sends_auth_header_and_hosted_request_shape():
+    """With an api key (hosted OpenAI-compatible endpoint: DeepSeek et al.): the
+    Authorization header is sent, JSON mode is requested via response_format ONLY
+    (the Ollama-only "format" key can 400 on strict hosted APIs), and the prompt
+    carries the literal word "json" (DeepSeek's JSON-mode requirement)."""
+    server = _serve([_openai_response(_payload())])
+    answerer = _answerer(server, api_key="sk-test-123")
+    result = answerer.answer_question("Are communications encrypted in transit?", [_chunk()])
+    assert result.status == AnswerStatus.ANSWERED
+    captured = server.handler_class.captured[0]
+    assert captured["authorization"] == "Bearer sk-test-123"
+    assert "format" not in captured["body"]
+    assert captured["body"]["response_format"] == {"type": "json_object"}
+    user_msg = captured["body"]["messages"][1]["content"]
+    assert "json" in user_msg.lower()
+    server.shutdown()
+
+
+def test_local_without_key_sends_no_auth_and_keeps_ollama_json_keys():
+    """Without a key (Ollama / vLLM / llama.cpp): no Authorization header, and both
+    JSON keys are sent — each local server ignores the one it does not understand."""
+    server = _serve([_openai_response(_payload())])
+    answerer = _answerer(server)
+    result = answerer.answer_question("Are communications encrypted in transit?", [_chunk()])
+    assert result.status == AnswerStatus.ANSWERED
+    captured = server.handler_class.captured[0]
+    assert captured["authorization"] is None
+    assert captured["body"]["format"] == "json"
+    assert captured["body"]["response_format"] == {"type": "json_object"}
     server.shutdown()
