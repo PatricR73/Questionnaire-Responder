@@ -60,7 +60,11 @@ def ingest_evidence(evidence_dir: Path, conn: sqlite3.Connection, vector_store: 
         conn.execute(
             "INSERT INTO source_docs (source_filename, content_hash, ingested_at) VALUES (?, ?, ?) "
             "ON CONFLICT(source_filename) DO UPDATE SET content_hash = excluded.content_hash, ingested_at = excluded.ingested_at",
-            (source_key, file_hash, __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat()),
+            (
+                source_key,
+                file_hash,
+                __import__("datetime").datetime.now(__import__("datetime").timezone.utc).isoformat(),
+            ),
         )
         if not chunks:
             continue

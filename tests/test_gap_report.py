@@ -27,14 +27,30 @@ def run_store(tmp_path):
     run_id = db.start_questionnaire_run(conn, str(FIXTURES / "questionnaire_sample.xlsx"), "out/x.xlsx")
     # One NOT_FOUND row (no evidence), one low row.
     db.record_answer(
-        conn, run_id, 2, "Do you offer a public bug bounty program?", "Do you offer a public bug bounty program?",
-        None, None, None, "none", [],
+        conn,
+        run_id,
+        2,
+        "Do you offer a public bug bounty program?",
+        "Do you offer a public bug bounty program?",
+        None,
+        None,
+        None,
+        "none",
+        [],
     )
     db.record_audit_entry(conn, run_id, 2, [], "none", provider="stub")
     db.record_answer(
-        conn, run_id, 3, "Is cloud data periodically backed up?", "Is cloud data periodically backed up?",
+        conn,
+        run_id,
+        3,
+        "Is cloud data periodically backed up?",
+        "Is cloud data periodically backed up?",
         "Yes, hourly, with a hedged caveat about retention windows.",
-        None, "low", "low", [], polarity="partial",
+        None,
+        "low",
+        "low",
+        [],
+        polarity="partial",
     )
     db.record_audit_entry(conn, run_id, 3, ["business_continuity_plan.docx"], "low", provider="stub")
     return conn, run_id, vector_store
@@ -61,14 +77,21 @@ def test_gap_report_marks_adjacent_retrieval(run_store, tmp_path):
     """A NOT_FOUND row whose retrieval DID find something must report the closest
     evidence and its distance — 'found something adjacent' is different from
     'nothing found' for the person fixing it."""
-    conn, run_id, vector_store = run_store
+    conn, _run_id, vector_store = run_store
     searcher = HybridSearcher(conn, vector_store)
     # An eval question that retrieves adjacent (but not on-point) evidence.
     run2 = db.start_questionnaire_run(conn, str(FIXTURES / "eval" / "questionnaire_eval.xlsx"), "out/y.xlsx")
     db.record_answer(
-        conn, run2, 4, "Are reviews and revalidation of user access for least privilege completed?",
+        conn,
+        run2,
+        4,
         "Are reviews and revalidation of user access for least privilege completed?",
-        None, None, None, "none", [],
+        "Are reviews and revalidation of user access for least privilege completed?",
+        None,
+        None,
+        None,
+        "none",
+        [],
     )
     db.record_audit_entry(conn, run2, 4, [], "none", provider="stub")
     report = build_gap_report(conn, run2, FIXTURES / "eval" / "questionnaire_eval.xlsx", searcher)

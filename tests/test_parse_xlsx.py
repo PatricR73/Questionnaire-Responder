@@ -11,7 +11,7 @@ decoys are penalized, and the highest scorer wins.
 import openpyxl
 import pytest
 
-from src.questionnaire.parse_xlsx import detect_columns, read_questions, iter_question_sheets
+from src.questionnaire.parse_xlsx import detect_columns, iter_question_sheets, read_questions
 
 
 def _sheet(headers, *, header_row=1, extra_rows=None):
@@ -132,7 +132,7 @@ def test_multi_sheet_workbook_with_instructions_first(tmp_path):
 
     sheets = iter_question_sheets(workbook)
     assert [name for name, _, _ in sheets] == ["Questionnaire"]
-    name, ws, column_map = sheets[0]
+    _, ws, column_map = sheets[0]
     questions = read_questions(ws, column_map)
     assert len(questions) == 2
     assert column_map.question_col == 2 and column_map.answer_col == 3

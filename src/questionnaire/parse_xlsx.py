@@ -201,9 +201,7 @@ def _parse_column_override(raw: str | None) -> dict | None:
     result = {}
     for part in raw.split(","):
         if "=" not in part:
-            raise ValueError(
-                f"--map entries must be role=column, got {part!r} (valid roles: question, answer, vocab)"
-            )
+            raise ValueError(f"--map entries must be role=column, got {part!r} (valid roles: question, answer, vocab)")
         role, value = part.strip().split("=", 1)
         role = role.strip().lower()
         if role not in ("question", "answer", "vocab"):
@@ -272,9 +270,6 @@ def iter_question_sheets(workbook, column_override: dict | None = None) -> list[
             continue
         found.append((ws.title, ws, column_map))
     return found
-
-
-
 
 
 def _is_section_header_row(ws: Worksheet, row: int, question_col: int) -> bool:

@@ -60,7 +60,13 @@ _INT_FIELDS = {
     "min_chunk_chars",
     "overlap_sentences",
 }
-_FLOAT_FIELDS = {"weak_match_distance", "vector_weight", "input_price_per_mtok", "output_price_per_mtok", "library_semantic_threshold"}
+_FLOAT_FIELDS = {
+    "weak_match_distance",
+    "vector_weight",
+    "input_price_per_mtok",
+    "output_price_per_mtok",
+    "library_semantic_threshold",
+}
 _BOOL_FIELDS = {"reranker", "entailment_check", "answer_library"}
 
 _ENV_VAR = "QRESP_CONFIG"  # env var pointing at a TOML file

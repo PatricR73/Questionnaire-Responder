@@ -8,8 +8,6 @@ surface — submit, poll, fetch.
 import time
 from pathlib import Path
 
-import pytest
-
 from qresp import Pipeline
 
 FIXTURES = Path(__file__).resolve().parent.parent / "fixtures"
@@ -36,7 +34,7 @@ def test_pipeline_ingest_answer_gap(tmp_path):
     assert report.total_questions == 3
     # Rendering to disk works too.
     gap_dir = tmp_path / "gaps"
-    report2 = pipeline.gap_report(result.run_id, output_dir=gap_dir)
+    pipeline.gap_report(result.run_id, output_dir=gap_dir)
     assert (gap_dir / f"gap_report_run{result.run_id}.md").exists()
 
 

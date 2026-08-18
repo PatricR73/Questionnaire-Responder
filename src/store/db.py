@@ -108,7 +108,7 @@ def connect(db_path: Path | None = None, key: str | None = None) -> sqlite3.Conn
     if key is None:
         key = os.environ.get("QRESP_STORE_KEY") or None
     if key:
-        import sqlcipher3
+        import sqlcipher3  # type: ignore[import-untyped]
 
         # PRAGMA key takes a quoted literal; keys are validated alphanumeric at
         # the call site (see pipeline.purge / SECURITY-POSTURE.md) so the single
@@ -159,7 +159,7 @@ def connect(db_path: Path | None = None, key: str | None = None) -> sqlite3.Conn
         try:
             conn.execute(statement)
             conn.commit()
-        except Exception:  # noqa: BLE001 — additive ALTERs: any failure here is "column already exists" on a pre-existing database. Broad on purpose: the sqlcipher3 path raises its own OperationalError class that is NOT a sqlite3.OperationalError subclass, and this loop must be idempotent on both connection types.
+        except Exception:  # noqa: BLE001, S110 — additive ALTERs: any failure here is "column already exists" on a pre-existing database. Broad on purpose: the sqlcipher3 path raises its own OperationalError class that is NOT a sqlite3.OperationalError subclass, and this loop must be idempotent on both connection types.
             pass
     return conn
 
@@ -237,7 +237,10 @@ def record_source_doc(conn: sqlite3.Connection, source_filename: str, content_ha
 
 def current_source_hashes(conn: sqlite3.Connection) -> dict[str, str]:
     """filename -> current content hash, for staleness checks against the library."""
-    return {r["source_filename"]: r["content_hash"] for r in conn.execute("SELECT source_filename, content_hash FROM source_docs")}
+    return {
+        r["source_filename"]: r["content_hash"]
+        for r in conn.execute("SELECT source_filename, content_hash FROM source_docs")
+    }
 
 
 def store_reviewed_answer(
@@ -401,8 +404,16 @@ def record_human_review(
                     ]
                     hashes = {f: h for f, h in current_source_hashes(conn).items() if f in files}
                 store_reviewed_answer(
-                    conn, run_id, row_index, row["question_text"], final_text, row["polarity"],
-                    cited_ids, cited_sentences, hashes, human_action,
+                    conn,
+                    run_id,
+                    row_index,
+                    row["question_text"],
+                    final_text,
+                    row["polarity"],
+                    cited_ids,
+                    cited_sentences,
+                    hashes,
+                    human_action,
                 )
     conn.commit()
 

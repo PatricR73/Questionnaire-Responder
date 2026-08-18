@@ -146,7 +146,11 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
     lib = json.loads(row["library_candidate"]) if row["library_candidate"] else None
     if lib and lib.get("candidates"):
         top = lib["candidates"][0]
-        state_label = "**reused a prior approved answer**" if lib.get("state") == "used" else "had a prior approved answer surfaced (draft did not reuse it)"
+        state_label = (
+            "**reused a prior approved answer**"
+            if lib.get("state") == "used"
+            else "had a prior approved answer surfaced (draft did not reuse it)"
+        )
         st.caption(
             f"📚 Answer library: {state_label} — "
             f"run {top['run_id']}, row {top['row_index']}, {top['human_action']} at {top['reviewed_at']}"

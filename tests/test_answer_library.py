@@ -18,11 +18,10 @@ import json
 from pathlib import Path
 
 import openpyxl
-import pytest
 
 from src.answer.library import answer_uses_prior, find_candidates, format_prior_answer_block
 from src.ingest.embed import ingest_evidence
-from src.questionnaire.parse_xlsx import detect_columns, read_questions
+from src.questionnaire.parse_xlsx import detect_columns
 from src.questionnaire.write_xlsx import LIBRARY_FILL
 from src.retrieval.hybrid_search import HybridSearcher
 from src.store import db
@@ -37,9 +36,17 @@ def _seed_store(tmp_path, conn):
     ingest_evidence(FIXTURES / "evidence", conn, vector_store)
     run_id = db.start_questionnaire_run(conn, "fixtures/eval/questionnaire_eval.xlsx", "out/x.xlsx")
     db.record_answer(
-        conn, run_id, 3, "Is cloud data periodically backed up?", "Is cloud data periodically backed up?",
+        conn,
+        run_id,
+        3,
+        "Is cloud data periodically backed up?",
+        "Is cloud data periodically backed up?",
         "Yes. Production databases are backed up hourly with 30-day retention.",
-        None, "high", "high", _chunk_ids(conn, "business_continuity_plan.docx"), polarity="affirms",
+        None,
+        "high",
+        "high",
+        _chunk_ids(conn, "business_continuity_plan.docx"),
+        polarity="affirms",
         cited_sentences=["Production databases are backed up hourly with 30-day retention."],
     )
     db.record_audit_entry(conn, run_id, 3, ["business_continuity_plan.docx"], "high", provider="stub")
@@ -95,8 +102,16 @@ def test_answer_without_source_snapshot_is_excluded(tmp_path):
     _seed_store(tmp_path, conn)
     # A row whose cited chunks have no recorded source hashes (empty snapshot).
     db.store_reviewed_answer(
-        conn, 1, 3, "Is cloud data periodically backed up?", "ANSWER TEXT", "affirms",
-        ["nonexistent-id"], [], {}, "approved",
+        conn,
+        1,
+        3,
+        "Is cloud data periodically backed up?",
+        "ANSWER TEXT",
+        "affirms",
+        ["nonexistent-id"],
+        [],
+        {},
+        "approved",
     )
     assert db.find_reviewed_answers(conn, "Is cloud data periodically backed up?") == []
 
@@ -127,7 +142,14 @@ def test_answer_uses_prior():
 
 def test_format_prior_answer_block_carries_provenance():
     block = format_prior_answer_block(
-        {"answer_text": "Yes.", "run_id": 7, "row_index": 3, "human_action": "approved", "reviewed_at": "2026-01-01T00:00:00+00:00", "similarity": 1.0}
+        {
+            "answer_text": "Yes.",
+            "run_id": 7,
+            "row_index": 3,
+            "human_action": "approved",
+            "reviewed_at": "2026-01-01T00:00:00+00:00",
+            "similarity": 1.0,
+        }
     )
     assert "PRIOR APPROVED ANSWER" in block
     assert "run 7" in block and "row 3" in block and "approved" in block
@@ -136,13 +158,13 @@ def test_format_prior_answer_block_carries_provenance():
 def test_library_marker_appears_in_workbook(tmp_path, monkeypatch):
     """End-to-end stub run with the library enabled: the marker, the workbook fill,
     and the DB record all appear without any API call."""
-    from src.config import load_config
-    from src.pipeline import cli
     from click.testing import CliRunner
+
+    from src.pipeline import cli
 
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     conn = db.connect(tmp_path / "store.db")
-    vector_store = _seed_store(tmp_path, conn)
+    _seed_store(tmp_path, conn)
     _approve(conn, 1, 3, "Is cloud data periodically backed up?", "Yes, hourly, 30-day retention.", ["x::0"])
 
     # The eval questionnaire contains a semantically equivalent question (BCR-08.1).
@@ -154,9 +176,16 @@ def test_library_marker_appears_in_workbook(tmp_path, monkeypatch):
         cli,
         [
             "answer",
-            "--questionnaire", str(FIXTURES / "eval" / "questionnaire_eval.xlsx"),
-            "--output", str(tmp_path / "out" / "filled.xlsx"),
-            "--limit", "0", "--provider", "stub", "--config", str(cfg_path),
+            "--questionnaire",
+            str(FIXTURES / "eval" / "questionnaire_eval.xlsx"),
+            "--output",
+            str(tmp_path / "out" / "filled.xlsx"),
+            "--limit",
+            "0",
+            "--provider",
+            "stub",
+            "--config",
+            str(cfg_path),
         ],
     )
     assert result.exit_code == 0, result.output
@@ -184,4 +213,5 @@ def test_library_marker_appears_in_workbook(tmp_path, monkeypatch):
 
 def test_library_off_by_default_does_not_change_output(tmp_path, monkeypatch):
     from src.config import load_config
+
     assert load_config().answer_library is False

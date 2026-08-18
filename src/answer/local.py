@@ -35,8 +35,8 @@ from dataclasses import dataclass
 
 import httpx
 
-from src.answer.answerer import AnswerPolarity, AnswerResult, AnswerStatus, Answerer
-from src.answer.confidence import GroundedConfidence, WEAK_MATCH_DISTANCE, cross_check_confidence
+from src.answer.answerer import Answerer, AnswerPolarity, AnswerResult, AnswerStatus
+from src.answer.confidence import WEAK_MATCH_DISTANCE, GroundedConfidence, cross_check_confidence
 from src.answer.entailment import EntailmentResult
 from src.answer.generate import (
     MAX_RETRIES,
@@ -45,8 +45,8 @@ from src.answer.generate import (
     RETRY_JITTER_SECONDS,
     RETRY_MAX_DELAY_SECONDS,
     SYSTEM_PROMPT,
-    _build_user_message,
     MalformedAnswerError,
+    _build_user_message,
 )
 from src.retrieval.hybrid_search import RetrievedChunk
 
@@ -211,7 +211,9 @@ class LocalAnswerer(Answerer):
             # contract (may only downgrade, never upgrade).
             supported = False
             beyond = ["(entailment judge response did not parse)"]
-        return EntailmentResult(supported=supported, beyond_claims=list(beyond), input_tokens=in_tok, output_tokens=out_tok)
+        return EntailmentResult(
+            supported=supported, beyond_claims=list(beyond), input_tokens=in_tok, output_tokens=out_tok
+        )
 
     # -- Answerer contract ----------------------------------------------------
 
@@ -240,7 +242,7 @@ class LocalAnswerer(Answerer):
 
         # Citation grounding: IDENTICAL to the hosted path — never trust the model.
         final_confidence = cross_check_confidence(
-            _DraftAdapter(payload),
+            _DraftAdapter(payload),  # type: ignore[arg-type]  # structurally an AnswerDraft
             chunks,
             weak_match_distance=self._weak_match_distance,
         )
@@ -248,7 +250,12 @@ class LocalAnswerer(Answerer):
 
         entailment_input_tokens = 0
         entailment_output_tokens = 0
-        if self._entailment_check and final_confidence != "none" and payload["answer"].strip() and payload["cited_sentences"]:
+        if (
+            self._entailment_check
+            and final_confidence != "none"
+            and payload["answer"].strip()
+            and payload["cited_sentences"]
+        ):
             result = self._check_entailment_local(payload["answer"], payload["cited_sentences"])
             entailment_input_tokens = result.input_tokens
             entailment_output_tokens = result.output_tokens
@@ -276,7 +283,13 @@ class LocalAnswerer(Answerer):
                 entailment_output_tokens=entailment_output_tokens,
             )
 
-        polarity_map = {"affirms": AnswerPolarity.AFFIRMS, "denies": AnswerPolarity.DENIES, "partial": AnswerPolarity.PARTIAL}
+        polarity_map = {
+            "affirms": AnswerPolarity.AFFIRMS,
+            "denies": AnswerPolarity.DENIES,
+            "partial": AnswerPolarity.PARTIAL,
+        }
+        polarity_raw = payload.get("polarity")
+        polarity = polarity_map.get(polarity_raw) if isinstance(polarity_raw, str) else None
         return AnswerResult(
             answer=payload["answer"],
             status=AnswerStatus.ANSWERED,
@@ -284,7 +297,7 @@ class LocalAnswerer(Answerer):
             cited_chunk_ids=cited_chunk_ids,
             provider=self.provider_name,
             vocab_selection=vocab_selection,
-            polarity=polarity_map.get(payload.get("polarity")),
+            polarity=polarity,
             cited_sentences=payload["cited_sentences"],
             input_tokens=in_tok,
             output_tokens=out_tok,

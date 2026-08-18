@@ -21,14 +21,17 @@ Run with: qresp serve --port 8000   (or: uvicorn src.service:app)
 
 import threading
 import uuid
-from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 
 from qresp import Pipeline
 
-app = FastAPI(title="Questionnaire Responder", version="0.1.0", description="Submit a questionnaire run, poll status, fetch results.")
+app = FastAPI(
+    title="Questionnaire Responder",
+    version="0.1.0",
+    description="Submit a questionnaire run, poll status, fetch results.",
+)
 
 # run_id -> {"status": "running"|"done"|"error", "output": str, "result": dict, "error": str}
 _RUNS: dict[str, dict] = {}
@@ -53,8 +56,12 @@ def _execute(run_id: str, req: RunRequest) -> None:
             pipeline.ingest(req.evidence_dir)
         output = req.output or f"out/service/{run_id}.xlsx"
         result = pipeline.answer(
-            req.questionnaire, output, limit=req.limit, provider=req.provider,
-            sheet=req.sheet, map_override=req.map_override,
+            req.questionnaire,
+            output,
+            limit=req.limit,
+            provider=req.provider,
+            sheet=req.sheet,
+            map_override=req.map_override,
         )
         with _LOCK:
             _RUNS[run_id] = {"status": "done", "output": output, "result": result.to_dict()}

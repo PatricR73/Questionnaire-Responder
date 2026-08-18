@@ -13,7 +13,6 @@ import sys
 from pathlib import Path
 
 from src.store import db
-from src.store.vectorstore import VectorStore
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -22,7 +21,11 @@ def _run(args, data_dir):
     env = dict(os.environ, QRESP_DATA_DIR=str(data_dir))
     return subprocess.run(
         [sys.executable, "-m", "src.pipeline", *args],
-        cwd=REPO_ROOT, env=env, capture_output=True, text=True,
+        cwd=REPO_ROOT,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
     )
 
 

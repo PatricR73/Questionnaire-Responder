@@ -22,7 +22,9 @@ DB_ERROR = (sqlite3.DatabaseError, sqlcipher3.dbapi2.DatabaseError)
 def test_encrypted_store_unreadable_without_key(tmp_path):
     path = tmp_path / "enc.db"
     conn = db.connect(Path(path), key="correct-key-123")
-    conn.execute("INSERT INTO questionnaire_runs (source_path, output_path, created_at) VALUES (?, ?, ?)", ("a", "b", "t"))
+    conn.execute(
+        "INSERT INTO questionnaire_runs (source_path, output_path, created_at) VALUES (?, ?, ?)", ("a", "b", "t")
+    )
     conn.commit()
     conn.close()
 
@@ -42,7 +44,9 @@ def test_store_key_env_var(tmp_path, monkeypatch):
     monkeypatch.setenv("QRESP_STORE_KEY", "env-key-456")
     path = tmp_path / "env.db"
     conn = db.connect(Path(path))
-    conn.execute("INSERT INTO questionnaire_runs (source_path, output_path, created_at) VALUES (?, ?, ?)", ("a", "b", "t"))
+    conn.execute(
+        "INSERT INTO questionnaire_runs (source_path, output_path, created_at) VALUES (?, ?, ?)", ("a", "b", "t")
+    )
     conn.commit()
     conn.close()
     with pytest.raises(sqlite3.DatabaseError):

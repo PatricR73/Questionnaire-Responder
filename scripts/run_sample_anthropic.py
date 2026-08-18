@@ -43,8 +43,12 @@ OUTPUT = SAMPLE_DIR / "filled_anthropic.xlsx"
 # demonstrates approve / edit / reject. See docs/sample/README.md for what each
 # row shows.
 REVIEW_EVENTS = {
-    2: "approved", 3: "approved", 9: "approved", 23: "approved",
-    22: "edited", 14: "rejected",
+    2: "approved",
+    3: "approved",
+    9: "approved",
+    23: "approved",
+    22: "edited",
+    14: "rejected",
 }
 
 
@@ -54,10 +58,22 @@ def main() -> None:
 
     print(f"1/3 running the real provider over {QUESTIONNAIRE.name} (24 rows, a few cents) ...")
     subprocess.run(
-        [sys.executable, "-m", "src.pipeline", "answer",
-         "--questionnaire", str(QUESTIONNAIRE), "--output", str(OUTPUT),
-         "--limit", "0", "--provider", "anthropic"],
-        cwd=REPO_ROOT, check=True,
+        [
+            sys.executable,
+            "-m",
+            "src.pipeline",
+            "answer",
+            "--questionnaire",
+            str(QUESTIONNAIRE),
+            "--output",
+            str(OUTPUT),
+            "--limit",
+            "0",
+            "--provider",
+            "anthropic",
+        ],
+        cwd=REPO_ROOT,
+        check=True,
     )
 
     print("2/3 recording a small review trail on representative rows ...")
@@ -76,9 +92,9 @@ def main() -> None:
     conn.commit()
 
     print("3/3 exporting the reviewed workbook ...")
+
     from src.questionnaire.parse_xlsx import detect_columns  # noqa: F401
     from src.review_ui import export_reviewed_workbook
-    import openpyxl
 
     rows = conn.execute(
         """
@@ -96,13 +112,11 @@ def main() -> None:
     ).fetchall()
     # export_reviewed_workbook expects row dicts with the keys its loop reads.
     row_dicts = [dict(r) for r in rows]
-    source_path = conn.execute(
-        "SELECT source_path FROM questionnaire_runs WHERE id = ?", (run_id,)
-    ).fetchone()[0]
+    source_path = conn.execute("SELECT source_path FROM questionnaire_runs WHERE id = ?", (run_id,)).fetchone()[0]
     export_path = export_reviewed_workbook(conn, run_id, source_path, str(OUTPUT), row_dicts)
     conn.close()
 
-    print(f"done. Commit these artifacts to docs/sample/:")
+    print("done. Commit these artifacts to docs/sample/:")
     print(f"  {OUTPUT.name}")
     print(f"  {OUTPUT.with_suffix('.jsonl').name}")
     print(f"  {export_path.name}")

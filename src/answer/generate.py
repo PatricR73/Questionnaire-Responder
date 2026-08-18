@@ -288,8 +288,7 @@ def _build_user_message(
 
         blocks = "\n\n".join(format_prior_answer_block(c) for c in prior_answers)
         prior_block = (
-            f"\n\n{PRIOR_ANSWER_RULES}\n\n"
-            f"Prior approved answer(s) to consider as candidates only:\n\n{blocks}"
+            f"\n\n{PRIOR_ANSWER_RULES}\n\nPrior approved answer(s) to consider as candidates only:\n\n{blocks}"
         )
     return (
         f"Question: {question}{vocab_line}\n\nEvidence passages:\n\n{passages if passages else '(no evidence passages retrieved)'}"
@@ -393,7 +392,7 @@ def generate_answer(
         raises used to report zero tokens."""
         # Dynamic attribute on a BaseException; mypy can't see it, and the
         # pipeline reads it back with getattr(..., "_row_usage", None).
-        exc._row_usage = {
+        exc._row_usage = {  # type: ignore[attr-defined]  # dynamic attribute, read back with getattr
             "input_tokens": total_input_tokens,
             "output_tokens": total_output_tokens,
             "cache_read_input_tokens": total_cache_read,

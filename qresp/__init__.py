@@ -25,11 +25,12 @@ CLI runs share a store — one questionnaire can be answered by the API and revi
 in the CLI's review UI.
 """
 
+import dataclasses
 import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
-__all__ = ["Pipeline", "AnswerRowResult", "AnswerRunResult", "GapReport", "__version__"]
+__all__ = ["AnswerRowResult", "AnswerRunResult", "GapReport", "Pipeline", "__version__"]
 __version__ = "0.1.0"
 
 
@@ -137,7 +138,10 @@ class Pipeline:
         self._activate()
         from src.pipeline import answer as answer_command
 
-        answer_command.callback(
+        callback = answer_command.callback
+        if callback is None:
+            raise RuntimeError("CLI answer command has no callback")
+        callback(
             questionnaire=Path(questionnaire),
             output=Path(output),
             limit=limit,
@@ -199,7 +203,6 @@ class Pipeline:
         gap-report'). When output_dir is given, the .md and .xlsx reports are also
         written there. Retrieval-only: no API calls."""
         self._activate()
-        import json as _json
 
         from src.config import load_config
         from src.data_dir import REPO_ROOT
@@ -209,9 +212,7 @@ class Pipeline:
         from src.store.vectorstore import VectorStore
 
         conn = db.connect()
-        src_row = conn.execute(
-            "SELECT source_path FROM questionnaire_runs WHERE id = ?", (run_id,)
-        ).fetchone()
+        src_row = conn.execute("SELECT source_path FROM questionnaire_runs WHERE id = ?", (run_id,)).fetchone()
         if src_row is None:
             raise ValueError(f"No questionnaire run with id {run_id}")
         questionnaire_path = Path(src_row["source_path"])
@@ -238,7 +239,7 @@ class Pipeline:
             total_questions=report["total_questions"],
             gap_count=report["gap_count"],
             weak_count=report["weak_count"],
-            gaps=[_json.dumps(g.__dict__) for g in report["gaps"]],
+            gaps=[dataclasses.asdict(g) for g in report["gaps"]],
             weak=report["weak"],
             domains_ranked=report["domains_ranked"],
         )

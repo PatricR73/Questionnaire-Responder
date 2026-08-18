@@ -48,7 +48,7 @@ def _payload(**overrides):
 class _StubHandler(BaseHTTPRequestHandler):
     """Serves canned OpenAI-compatible responses; behaviour set per-test via class attr."""
 
-    responses = []
+    responses = []  # noqa: RUF012 — per-test mutable canned responses
     status_code = 200
 
     def do_POST(self):
@@ -100,7 +100,9 @@ def test_local_happy_path_with_grounded_citations():
 
 
 def test_local_honest_abstention_maps_to_not_found():
-    server = _serve([_openai_response(_payload(supported=False, answer="", cited_sentences=[], self_confidence="none"))])
+    server = _serve(
+        [_openai_response(_payload(supported=False, answer="", cited_sentences=[], self_confidence="none"))]
+    )
     answerer = _answerer(server)
     result = answerer.answer_question("Do you run a bug bounty program?", [_chunk()])
     assert result.status == AnswerStatus.NOT_FOUND
@@ -114,7 +116,10 @@ def test_local_corrective_retry_on_malformed_output():
     # Anthropic path; usage from both calls is accounted.
     server = _serve(
         [
-            {"choices": [{"message": {"content": "not json at all"}}], "usage": {"prompt_tokens": 9, "completion_tokens": 3}},
+            {
+                "choices": [{"message": {"content": "not json at all"}}],
+                "usage": {"prompt_tokens": 9, "completion_tokens": 3},
+            },
             _openai_response(_payload(), usage={"prompt_tokens": 11, "completion_tokens": 4}),
         ]
     )

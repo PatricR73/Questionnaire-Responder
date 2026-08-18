@@ -46,39 +46,59 @@ QUESTIONNAIRE = REPO_ROOT / "fixtures" / "eval" / "questionnaire_eval.xlsx"
 # (answer, final_confidence, self_confidence, polarity, cited_sentence, human_action)
 CURATION = {
     2: (
-        "Yes. All network traffic between clients and production services is encrypted in transit "
-        "using TLS 1.2 or higher, and internal service-to-service traffic within the production VPC "
-        "is additionally encrypted using mutual TLS.",
-        "high", "high", "affirms",
+        (
+            "Yes. All network traffic between clients and production services is encrypted in transit "
+            "using TLS 1.2 or higher, and internal service-to-service traffic within the production VPC "
+            "is additionally encrypted using mutual TLS."
+        ),
+        "high",
+        "high",
+        "affirms",
         "All network traffic between clients and production services is encrypted in transit using TLS 1.2 or higher.",
         "approved",
     ),
     3: (
-        "Yes. Production databases are backed up hourly with 30-day retention, and backups are stored "
-        "in a separate cloud region from the primary production environment.",
-        "high", "high", "affirms",
+        (
+            "Yes. Production databases are backed up hourly with 30-day retention, and backups are stored "
+            "in a separate cloud region from the primary production environment."
+        ),
+        "high",
+        "high",
+        "affirms",
         "Production databases are backed up hourly with 30-day retention.",
         "approved",
     ),
     9: (
-        "No. The access control policy states that customers do not have the ability to manage their "
-        "own encryption keys; all key management is performed internally by the security team.",
-        "high", "high", "denies",
+        (
+            "No. The access control policy states that customers do not have the ability to manage their "
+            "own encryption keys; all key management is performed internally by the security team."
+        ),
+        "high",
+        "high",
+        "denies",
         "Customers do not have the ability to manage their own encryption keys; all key management is performed internally by the security team.",
         "approved",
     ),
     22: (
-        "Encryption keys are managed via a dedicated key management service and rotated annually. "
-        "The provided evidence does not state whether the key management service is backed by a "
-        "hardware security module (HSM), so this row should be confirmed with the security team before sending.",
-        "low", "high", "partial",
+        (
+            "Encryption keys are managed via a dedicated key management service and rotated annually. "
+            "The provided evidence does not state whether the key management service is backed by a "
+            "hardware security module (HSM), so this row should be confirmed with the security team before sending."
+        ),
+        "low",
+        "high",
+        "partial",
         "Encryption keys are managed via a dedicated key management service and rotated annually.",
         "edited",
     ),
     23: (
-        "Yes. Backups are stored off-site in a separate cloud region from the primary production "
-        "environment, with hourly backups and 30-day retention.",
-        "high", "high", "affirms",
+        (
+            "Yes. Backups are stored off-site in a separate cloud region from the primary production "
+            "environment, with hourly backups and 30-day retention."
+        ),
+        "high",
+        "high",
+        "affirms",
         "Backups are stored in a separate cloud region from the primary production environment.",
         "approved",
     ),
@@ -94,15 +114,30 @@ def main() -> None:
     print("1/3 ingesting evidence ...")
     subprocess.run(
         [sys.executable, "-m", "src.pipeline", "ingest", "--evidence-dir", str(EVIDENCE)],
-        cwd=REPO_ROOT, env=env, check=True,
+        cwd=REPO_ROOT,
+        env=env,
+        check=True,
     )
     print("2/3 running the stub questionnaire run ...")
     output = REPO_ROOT / "out" / "demo_eval_filled.xlsx"
     subprocess.run(
-        [sys.executable, "-m", "src.pipeline", "answer",
-         "--questionnaire", str(QUESTIONNAIRE), "--output", str(output),
-         "--limit", "0", "--provider", "stub"],
-        cwd=REPO_ROOT, env=env, check=True,
+        [
+            sys.executable,
+            "-m",
+            "src.pipeline",
+            "answer",
+            "--questionnaire",
+            str(QUESTIONNAIRE),
+            "--output",
+            str(output),
+            "--limit",
+            "0",
+            "--provider",
+            "stub",
+        ],
+        cwd=REPO_ROOT,
+        env=env,
+        check=True,
     )
     print("3/3 curating the five answered rows into a frozen sample ...")
     conn = sqlite3.connect(STORE / "store.db")
@@ -112,8 +147,7 @@ def main() -> None:
         conn.execute(
             "UPDATE answers SET drafted_answer=?, reviewed_answer=?, final_confidence=?, "
             "self_confidence=?, polarity=?, cited_sentences=? WHERE run_id=? AND row_index=?",
-            (answer, answer if action == "approved" else answer, final, self_conf, polarity,
-             json.dumps([cited_sentence]), run_id, row_index),
+            (answer, answer, final, self_conf, polarity, json.dumps([cited_sentence]), run_id, row_index),
         )
         # Review event exactly as the review UI records it (confidence='review').
         conn.execute(
@@ -123,8 +157,7 @@ def main() -> None:
         )
     conn.commit()
     n_answers = conn.execute("SELECT COUNT(*) FROM answers").fetchone()[0]
-    n_reviewed = conn.execute(
-        "SELECT COUNT(*) FROM audit_log WHERE confidence='review'").fetchone()[0]
+    n_reviewed = conn.execute("SELECT COUNT(*) FROM audit_log WHERE confidence='review'").fetchone()[0]
     conn.close()
     print(f"done: {n_answers} rows, {n_reviewed} curated review events in {STORE}")
 

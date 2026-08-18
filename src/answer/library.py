@@ -125,11 +125,7 @@ def format_prior_answer_block(candidate: dict) -> str:
         f"{candidate.get('human_action')} at {candidate.get('reviewed_at')}, "
         f"similarity {candidate.get('similarity', '?')})"
     )
-    return (
-        f"[PRIOR APPROVED ANSWER — {provenance}]\n"
-        f"{candidate['answer_text']}\n"
-        f"[END PRIOR APPROVED ANSWER]"
-    )
+    return f"[PRIOR APPROVED ANSWER — {provenance}]\n{candidate['answer_text']}\n[END PRIOR APPROVED ANSWER]"
 
 
 def answer_uses_prior(final_answer: str, candidate: dict, threshold: float = 0.5) -> bool:

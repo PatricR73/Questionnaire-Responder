@@ -164,7 +164,6 @@ def ingest(evidence_dir: Path):
     click.echo(f"Ingested {n} chunks.")
 
 
-
 @cli.command()
 @click.option(
     "--questionnaire",
@@ -258,6 +257,7 @@ def demo(questionnaire: Path | None, port: int, no_ui: bool, bind: str):
             "stub",
         ],
         env=env,
+        check=False,  # returncode inspected right below, with a clear message
     )
     if result.returncode != 0:
         raise click.ClickException(f"Demo run failed (exit {result.returncode}).")
@@ -289,12 +289,6 @@ def demo(questionnaire: Path | None, port: int, no_ui: bool, bind: str):
         "true",
     ]
     stcli.main()
-
-
-
-
-
-
 
 
 @cli.command()
@@ -357,9 +351,7 @@ def gap_report(run_id: int, output_dir: Path | None, top_k: int):
     from src.gap_report import build_gap_report, render_markdown, render_xlsx
 
     conn = db.connect()
-    src_row = conn.execute(
-        "SELECT source_path FROM questionnaire_runs WHERE id = ?", (run_id,)
-    ).fetchone()
+    src_row = conn.execute("SELECT source_path FROM questionnaire_runs WHERE id = ?", (run_id,)).fetchone()
     if src_row is None:
         raise click.ClickException(f"No questionnaire run with id {run_id}.")
 
@@ -380,7 +372,9 @@ def gap_report(run_id: int, output_dir: Path | None, top_k: int):
         rrf_k=cfg.rrf_k,
         candidate_pool=cfg.candidate_pool,
     )
-    report = build_gap_report(conn, run_id, questionnaire_path if questionnaire_path.exists() else Path(""), searcher, top_k=top_k)
+    report = build_gap_report(
+        conn, run_id, questionnaire_path if questionnaire_path.exists() else Path(""), searcher, top_k=top_k
+    )
 
     out_dir = output_dir or (REPO_ROOT / "out")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -394,7 +388,6 @@ def gap_report(run_id: int, output_dir: Path | None, top_k: int):
         f"{report['gap_count']} unanswerable + {report['weak_count']} low-confidence of "
         f"{report['total_questions']} questions. No API calls were made."
     )
-
 
 
 @cli.command()
@@ -442,17 +435,13 @@ def inspect(questionnaire: Path, sheet: str | None):
                 from openpyxl.utils.cell import get_column_letter
 
                 header_text = ws.cell(row=column_map.header_row, column=col).value
-                click.echo(
-                    f"  {role:8s}: column {get_column_letter(col)} ({col}) score={score} "
-                    f"header={header_text!r}"
-                )
+                click.echo(f"  {role:8s}: column {get_column_letter(col)} ({col}) score={score} header={header_text!r}")
         questions = read_questions(ws, column_map)
         click.echo(f"  question rows: {len(questions)}")
         if questions:
             click.echo(f"  sample: {questions[0].question_text[:110]}")
     click.echo("")
     click.echo("If detection is wrong on a real file, re-run answer with --map question=C,answer=E,vocab=D.")
-
 
 
 @cli.command()
@@ -479,7 +468,6 @@ def serve(port: int, host: str):
 
     click.echo(f"Serving the integration API on http://{host}:{port} — see docs/INTEGRATION.md.")
     uvicorn.run(app, host=host, port=port)
-
 
 
 @cli.command()
@@ -792,7 +780,11 @@ def answer(
     click.echo(f"Answering {len(selected)} row(s) ({total_detected} detected){sheets_note} with provider={provider}.")
     log.info(
         "answer run starting: %d row(s) (%d detected across %d sheets), provider=%s, dry_run=%s",
-        len(selected), total_detected, len(sheet_questions), provider, dry_run,
+        len(selected),
+        total_detected,
+        len(sheet_questions),
+        provider,
+        dry_run,
     )
 
     if dry_run:
@@ -801,7 +793,9 @@ def answer(
 
     if provider == "stub":
         for _, ws, column_map, _ in sheet_questions:
-            _add_stub_banner(ws, last_col=max(column_map.question_col, column_map.answer_col, column_map.vocab_col or 0))
+            _add_stub_banner(
+                ws, last_col=max(column_map.question_col, column_map.answer_col, column_map.vocab_col or 0)
+            )
 
     conn = db.connect()
     vector_store = VectorStore(model_name=cfg.embedding_model)
@@ -878,7 +872,10 @@ def answer(
                         evidence = []
                         evidence = searcher.search(sub_question, top_k=cfg.top_k)
                         result = answerer.answer_question(
-                            sub_question, evidence, column_map.vocab_values, row_index=q.row_index,
+                            sub_question,
+                            evidence,
+                            column_map.vocab_values,
+                            row_index=q.row_index,
                             prior_answers=prior_answers or None,
                         )
                         sub_results.append((sub_question, result, evidence))
@@ -1015,8 +1012,14 @@ def answer(
                 caught_exc = None
 
                 write_answer(
-                    ws, q.row_index, column_map, answer_text or "", vocab_selection, final_confidence,
-                    library_state=library_state, library_provenance=library_provenance,
+                    ws,
+                    q.row_index,
+                    column_map,
+                    answer_text or "",
+                    vocab_selection,
+                    final_confidence,
+                    library_state=library_state,
+                    library_provenance=library_provenance,
                 )
                 db.record_answer(
                     conn,

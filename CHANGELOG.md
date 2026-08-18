@@ -6,6 +6,57 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — client-facing (pack 3)
+
+- **`qresp demo`**: one command to a filled workbook plus a running review
+  screen, no API key and no model download — backed by a committed pre-built
+  store (`demo_store/`), and a `Dockerfile` so `docker run -p 8501:8501`
+  is the zero-setup path.
+- **Hosted read-only review screen**: `QRESP_REVIEW_READ_ONLY` freezes the UI
+  (no approve/edit/export, frozen-sample banner); `streamlit_app.py` deploys it
+  to Streamlit Community Cloud over the committed synthetic demo store
+  (`docs/HOSTED-DEMO.md`).
+- **Answer library** (`answer_library` flag, default OFF): human-approved
+  answers persist to a separate, freshness-gated namespace and are surfaced to
+  the generator as labelled candidates with provenance — never as retrieval
+  evidence; rows that reuse one are marked with a third fill colour.
+- **`qresp gap-report`**: NOT_FOUND rows as a documentation gap analysis
+  (Markdown + XLSX), grouped by domain, with the closest evidence actually
+  retrieved per gap.
+- **Multi-sheet questionnaires**: every question-bearing tab is processed
+  (`--sheet NAME` targets one), `qresp inspect` shows the detection with
+  scores before any spend, and `--map question=C,answer=E,vocab=D` overrides
+  detection entirely.
+- **`--provider local`**: fully on-premise generation via any OpenAI-compatible
+  endpoint (Ollama/vLLM/llama.cpp) with the same citation and entailment
+  guarantees; measured baseline published in `EVAL.md` (qwen2.5:0.5b: 9/24
+  structural match, two abstention regressions).
+- **Workspaces** (`--workspace NAME`, `qresp workspace list/new`): per-client
+  data directories — isolation at the storage layer, structurally impossible to
+  cross.
+- **Integration surfaces**: `from qresp import Pipeline` (ingest/answer/
+  gap_report) and a minimal FastAPI service (`qresp serve`) — submit, poll,
+  fetch; `docs/INTEGRATION.md`.
+- **Security posture**: `docs/SECURITY-POSTURE.md`, `qresp purge` (delete a
+  workspace's store), optional SQLCipher at-rest encryption
+  (`QRESP_STORE_KEY`), and a review-UI warning when the bind address is
+  widened.
+- **README** restructured buyer-first (problem → try it → what you get → what it
+  costs → why trust it → how it works → results), with a measured ROI table
+  (`docs/sample/roi_measurement.md`).
+- **`docs/CASE-STUDY.md`** (1,600 words) and **`docs/ROADMAP-CONNECTORS.md`**
+  (scoped, deliberately unbuilt; tracked as issue #15, milestone v0.3.0).
+
+### Changed
+
+- `answers` gains `sheet_name` and `library_candidate` columns; new
+  `source_docs` and `reviewed_answers` tables; multi-sheet runs record the
+  sheet per row.
+- `run_eval.py` accepts `--provider` so the local path is measured by the same
+  documented command.
+- The v2 priority order in `docs/DESIGN.md` moves the answer library to #1 —
+  explicitly a commercial reorder, stated as such.
+
 - Live eval of the A1 entailment layer (flag on/off, --repeats 3) once API
   credits are available; the false-positive cost (correct answers wrongly killed)
   decides whether the flag stays on.

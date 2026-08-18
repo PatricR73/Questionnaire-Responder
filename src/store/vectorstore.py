@@ -99,7 +99,8 @@ class VectorStore:
         measured in the same vector space as retrieval. The BGE query prefix is NOT
         applied here: this is text-to-text similarity (prior question vs current
         question), not the asymmetric retrieval setup the prefix exists for."""
-        return self._embedding_fn(texts)  # type: ignore[no-any-return]
+        embedded = self._embedding_fn(texts)
+        return [list(vec) for vec in embedded]  # type: ignore[union-attr]
 
     def embed_query(self, text: str) -> list[float] | None:
         """Embed one query-side text, or None if the model is unavailable.
