@@ -56,6 +56,20 @@ The same two-layer pattern is applied to vocabulary selection: the per-request
 structured-output schema constrains `vocab_selection` to the sheet's actual value
 list (constrained decoding), and `AnthropicAnswerer` asserts membership at runtime —
 a non-member value is dropped and the row downgraded to "low" rather than written.
+**Known per-provider difference (documented, not accidental):** the schema-level
+layer only exists on the Anthropic path — it is enforced by the API's structured
+outputs (constrained decoding), which json_object mode on the
+`--provider openai-compatible` transport does not provide. That transport
+therefore carries the SAME guarantees as explicit post-hoc checks in
+`src/answer/local.py`: `_parse_payload` enforces the schema's shapes and enums
+(supported is bool, answer is str, cited_sentences is a list of str,
+vocab_selection is str-or-null, self_confidence and polarity are the schema's
+enums), raising a per-row ERROR after one corrective retry on any violation —
+the json_object equivalent of the API rejecting a schema-invalid response — and
+the same membership assertion + confidence downgrade to "low" applies to
+out-of-vocabulary values. The guarantees are identical across providers; only
+the enforcement mechanism differs (decode-time on Anthropic, post-hoc on the
+OpenAI-compatible transport).
 
 **Every output requires human review before it goes to a customer.** High-confidence
 answers are written directly into the workbook, but "high confidence" describes the

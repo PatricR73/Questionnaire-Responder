@@ -215,9 +215,16 @@ class LocalAnswerer(Answerer):
         """OpenAI response -> validated answer payload.
 
         Extracts the assistant message content, parses it as JSON, and validates
-        the required keys (the same REQUIRED_ANSWER_KEYS the Anthropic path
-        enforces). Raises MalformedAnswerError on any failure, so a bad local
-        model response is a per-row ERROR upstream — never a silent NOT_FOUND."""
+        the required keys AND their shapes — the same contract the Anthropic
+        path gets from build_answer_schema's constrained decoding. json_object
+        mode guarantees JSON, not shape, so everything the schema would have
+        enforced at decode time must be enforced here explicitly: supported is a
+        bool, answer is a str, cited_sentences is a list of str, vocab_selection
+        is a str or null, self_confidence is one of high/low/none, and polarity
+        is one of affirms/denies/partial or null. Raises MalformedAnswerError on
+        any violation, so a bad local model response is a per-row ERROR upstream
+        (after one corrective retry) — never a silent NOT_FOUND.
+        """
         try:
             content = response_json["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -230,6 +237,34 @@ class LocalAnswerer(Answerer):
             raise MalformedAnswerError(
                 f"Local response JSON missing required keys: {REQUIRED_ANSWER_KEYS - set(payload.keys())}"
             )
+
+        # Shape enforcement. On the Anthropic path build_answer_schema's
+        # constrained decoding guarantees these types at decode time; json_object
+        # mode carries no schema, so the same guarantees are enforced here or the
+        # row is a per-row ERROR. Without this, a non-bool supported would break
+        # the abstention logic, and a string cited_sentences would iterate
+        # character-by-character through the citation cross-check.
+        supported = payload["supported"]
+        answer = payload["answer"]
+        cited = payload["cited_sentences"]
+        vocab = payload["vocab_selection"]
+        conf = payload["self_confidence"]
+        polarity = payload["polarity"]
+        violations = []
+        if not isinstance(supported, bool):
+            violations.append("supported is " + type(supported).__name__ + ", expected bool")
+        if not isinstance(answer, str):
+            violations.append("answer is " + type(answer).__name__ + ", expected str")
+        if not isinstance(cited, list) or not all(isinstance(s, str) for s in cited):
+            violations.append("cited_sentences must be a list of str")
+        if vocab is not None and not isinstance(vocab, str):
+            violations.append("vocab_selection must be a str or null")
+        if conf not in ("high", "low", "none"):
+            violations.append("self_confidence " + repr(conf) + " is not high/low/none")
+        if polarity is not None and polarity not in ("affirms", "denies", "partial"):
+            violations.append("polarity " + repr(polarity) + " is not affirms/denies/partial or null")
+        if violations:
+            raise MalformedAnswerError("Local response violates the answer schema: " + "; ".join(violations))
         return payload
 
     def _answer_call(self, user_message: str) -> tuple[dict, int, int]:

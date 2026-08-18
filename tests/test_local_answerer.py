@@ -273,3 +273,87 @@ def test_local_alias_warns_on_hosted_url(tmp_path, monkeypatch):
     clean = CliRunner().invoke(cli, base + ["--provider", "openai-compatible"])
     assert clean.exit_code == 0, clean.output
     assert "legacy name" not in clean.output
+
+
+def test_local_rejects_out_of_vocabulary_value_and_downgrades():
+    """The post-hoc vocabulary assertion (the only enforcement json_object mode
+    gets — no schema enum like the Anthropic path): a value outside the sheet's
+    list is nulled AND the row is downgraded to low, never written."""
+    server = _serve([_openai_response(_payload(vocab_selection="Maybe"))])
+    answerer = _answerer(server)
+    result = answerer.answer_question(
+        "Are communications encrypted in transit?", [_chunk()], vocab_values=["Yes", "No"]
+    )
+    assert result.status == AnswerStatus.ANSWERED
+    assert result.vocab_selection is None
+    assert result.confidence == "low"
+    server.shutdown()
+
+
+def test_local_nulls_vocab_value_when_no_list_provided():
+    """Rule 5: without an allowed list, any non-null vocab_selection is nulled and
+    the row downgraded — matching the Anthropic runtime assertion."""
+    server = _serve([_openai_response(_payload(vocab_selection="Yes"))])
+    answerer = _answerer(server)
+    result = answerer.answer_question("Are communications encrypted in transit?", [_chunk()])
+    assert result.status == AnswerStatus.ANSWERED
+    assert result.vocab_selection is None
+    assert result.confidence == "low"
+    server.shutdown()
+
+
+def test_local_rejects_non_list_cited_sentences():
+    """json_object mode guarantees JSON, not shape: a string cited_sentences would
+    otherwise iterate character-by-character through the citation cross-check. It
+    must be rejected as a schema violation, with the corrective retry given one
+    chance to fix it."""
+    bad = _openai_response(_payload(cited_sentences="All network traffic is encrypted in transit."))
+    server = _serve([bad, _openai_response(_payload())])
+    answerer = _answerer(server)
+    result = answerer.answer_question("Are communications encrypted in transit?", [_chunk()])
+    assert result.status == AnswerStatus.ANSWERED  # corrected on retry
+    server.shutdown()
+
+    server2 = _serve([_openai_response(_payload(cited_sentences="not a list")), bad])
+    answerer2 = _answerer(server2)
+    from src.answer.generate import MalformedAnswerError
+
+    with pytest.raises(MalformedAnswerError):
+        answerer2.answer_question("Are communications encrypted in transit?", [_chunk()])
+    server2.shutdown()
+
+
+def test_local_rejects_non_bool_supported():
+    """supported must be a real bool — a string "false" is truthy and would break
+    the abstention logic if only truthiness were checked."""
+
+    server = _serve([_openai_response(_payload(supported="false")), _openai_response(_payload(supported=False))])
+    answerer = _answerer(server)
+    result = answerer.answer_question("Are communications encrypted in transit?", [_chunk()])
+    assert result.status == AnswerStatus.NOT_FOUND  # corrected retry abstains
+    server.shutdown()
+
+
+def test_local_rejects_invalid_self_confidence_and_polarity():
+    """The schema's enums are enforced post-hoc: an unknown self_confidence or
+    polarity is a schema violation (corrective retry, then ERROR), not a silent
+    guess about what the model meant."""
+    from src.answer.generate import MalformedAnswerError
+
+    server = _serve([_openai_response(_payload(self_confidence="confident")), _openai_response(_payload())])
+    answerer = _answerer(server)
+    result = answerer.answer_question("Are communications encrypted in transit?", [_chunk()])
+    assert result.status == AnswerStatus.ANSWERED  # corrected on retry
+    server.shutdown()
+
+    server2 = _serve([_openai_response(_payload(polarity="affirm")), _openai_response(_payload())])
+    answerer2 = _answerer(server2)
+    result2 = answerer2.answer_question("Are communications encrypted in transit?", [_chunk()])
+    assert result2.status == AnswerStatus.ANSWERED
+    server2.shutdown()
+
+    server3 = _serve([_openai_response(_payload(polarity="affirm")), _openai_response(_payload(polarity="affirm"))])
+    answerer3 = _answerer(server3)
+    with pytest.raises(MalformedAnswerError):
+        answerer3.answer_question("Are communications encrypted in transit?", [_chunk()])
+    server3.shutdown()
