@@ -6,25 +6,26 @@ published so the numbers can be audited, re-timed, or improved. The timing rows
 are the AUTHOR's measured speed — a floor, not an analyst benchmark. Re-time with
 a real analyst before using in a proposal.
 
-> **Provider note (2026-08-18):** the API-cost and manual-rows figures below are
-> Claude-era — the dry-run token counts were measured on the Anthropic path, and
-> the 9-of-24 rows come from the superseded Claude baseline. The baseline provider
-> moved to DeepSeek (`deepseek-v4-flash`) on this date, and the DeepSeek baseline
-> is pending re-measurement (see the
-> [EVAL.md current-baseline section](../../EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measurement-pending)).
+> **Provider note (2026-08-18):** the API-cost and manual-rows figures below mix
+> two eras. The dry-run token counts were measured on the Anthropic path (Claude-era);
+> the DeepSeek baseline has since been measured on the real provider (see the
+> [EVAL.md current-baseline section](../../EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measured-2026-08-18))
+> — ~$0.02/run actual spend, 21-of-24 abstentions (only 3 answered), zero
+> fabrications/inversions/regressions.
 
 - Hand-answer pass: 24 questions answered from fixtures/evidence/ alone, in timed
   batches; total wall time ≈ 90 s (author speed).
 - Review pass: 24 rows (question + drafted answer + cited evidence) read and
   decided (approve / edit / flag), timed; total wall time ≈ 6 s (author speed).
-- API cost (Claude-era estimate): measured by `qresp answer --dry-run` over the
-  same 24-question set (≈33k input + ≈27k output tokens, local-tokenizer undercount
-  band) → $0.55–0.60 at the Claude rate card then in force; the same counts at the
-  current default DeepSeek rate card estimate ~$0.02–0.03 (the README's figure).
-  Both are estimates pending the real DeepSeek run.
-- Manual rows: from the published 24-question baseline (EVAL.md) — 9 of 24 rows
-  needed a human (7 honest abstentions + 2 other causes; 0 fabrications). This is a
-  Claude-era result; the DeepSeek baseline is pending re-measurement.
+- API cost (Claude-era estimate, kept for the historical record): measured by
+  `qresp answer --dry-run` over the same 24-question set (≈33k input + ≈27k output
+  tokens, local-tokenizer undercount band) → $0.55–0.60 at the Claude rate card then
+  in force. The measured DeepSeek baseline (2026-08-18) records ~36.4k input + ~17k
+  output tokens per run → **~$0.02/run** actual spend — roughly a 30x reduction.
+- Manual rows: DeepSeek baseline (EVAL.md, 2026-08-18) — **21 of 24 rows abstain**
+  (NOT FOUND — only 3 answered: `BCR-08.1`, `CEK-08.1`, `ADV-02`), up from the Claude
+  era's 7 answerable abstentions; 0 fabrications, 0 polarity inversions, 0 NOT_FOUND
+  regressions.
 
 ---
 

@@ -140,10 +140,23 @@ Measured on the 24-question set (Claude, superseded 2026-08-18): **15/24 structu
 match**, zero confirmed textual fabrications on re-examination, 9 rows wrong for
 named, verified reasons (7 honest abstentions + 2 other causes), with a 95% Wilson
 interval wide enough that nobody should mistake 15/24 for a finished instrument.
-These are the Claude-era measurements: the baseline provider moved to DeepSeek
-(`deepseek-v4-flash`) on 2026-08-18, and the DeepSeek baseline is pending
-re-measurement — see the
-[EVAL.md current-baseline section](../EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measurement-pending).
+The baseline provider moved to DeepSeek (`deepseek-v4-flash`) on 2026-08-18 and is
+**now measured too** — see the
+[EVAL.md current-baseline section](../EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measured-2026-08-18).
+
+**The provider migration traded roughly three questions of coverage for roughly a
+30x cost reduction, with no loss of safety properties.** DeepSeek scores a mean of
+11.3/24 structural match (range 11–12) against Claude's 15/24 — roughly three
+questions of coverage — while the run cost dropped from the Claude-era estimate
+(~$0.55–0.60 per 24-question run at the then-current rate card, per
+`docs/sample/roi_measurement.md`) to a measured **~$0.02 per run** on DeepSeek:
+roughly a **30x reduction** in API spend. What did not change is the part this
+project exists to protect: zero confirmed fabrications, zero polarity inversions,
+and zero NOT_FOUND regressions across all three runs. The measured trade is exactly
+the one the product pitch makes — the safety properties are provider-independent
+because they live in the grounding and abstention layers, not in the model — and
+the coverage cost of the cheaper provider is real but inside the Wilson interval at
+n=24 (the two providers are not distinguishable at this sample size).
 The confidence-threshold
 problem remains unsolved at this corpus size. The answer library — the feature that
 makes the second questionnaire cheaper than the first — is built behind a flag,

@@ -52,7 +52,7 @@ DeepSeek. The DeepSeek baseline lives in the current-baseline section below; eve
 number that follows is historical and **not comparable** to anything measured after this
 date (see `fixtures/eval/TUNING_LOG.md`'s provider note).
 
-## Current baseline: DeepSeek (`deepseek-v4-flash`) — measurement pending
+## Current baseline: DeepSeek (`deepseek-v4-flash`) — measured 2026-08-18
 
 As of 2026-08-18 the baseline generation provider is **DeepSeek** via the OpenAI-compatible
 transport (`--provider openai-compatible`, the CLI default). The eval runs with
@@ -67,17 +67,61 @@ python fixtures/eval/run_eval.py --repeats 3
 
 (`deepseek-v4-flash` is DeepSeek's current chat-tier model — the default;
 `deepseek-v4-pro` is the higher-quality, higher-cost option. The run needs a DeepSeek
-API key. This repo's discipline is that published numbers are measured, not aspirational,
-so the table below stays pending until the run lands and is committed.)
+API key.)
+
+**Measured on 2026-08-18 at `c076139` (clean tree, `max_tokens=4096` after the truncation
+defect fix — see TUNING_LOG.md): three runs, all 24 rows scored.**
 
 | Provider | Model | Structural match | NOT_FOUND regressions | Polarity inversions | 95% Wilson CI |
 |---|---|---|---|---|---|
-| DeepSeek | `deepseek-v4-flash` | pending — run the command above | | | |
+| DeepSeek | `deepseek-v4-flash` | **11 / 11.3 / 12 of 24** (min / mean / max across 3 runs) | **0** | **0** | **[27.9%, 64.9%]** |
 
-Cost estimates for this provider are directional until the run records real usage: the
-dry-run counts tokens with Claude's BPE (`src/answer/tokenize.py`), not DeepSeek's
-tokenizer — the dry-run output states this caveat, and the rate card prices DeepSeek
-(`deepseek-v4-flash`, off-peak) by default.
+**Mean and range.** Per-run structural matches were `[11, 11, 12]` out of 24 — mean
+**11.3**, range **11–12**. The same 11 questions matched in runs 1 and 2; run 3 added
+`ADV-02` when the model happened to answer it `affirms` (high) instead of `partial`
+(low), flipping that row from a structural mismatch to a match.
+
+**The interval overlaps the Claude baseline's, so at n=24 the two providers are not
+distinguishable.** The DeepSeek 95% Wilson interval is **[27.9%, 64.9%]**; the Claude
+baseline's (15/24) is **[42.7%, 78.8%]**. They overlap across most of their width. The
+drop from 15/24 (Claude) to 11.3/24 (DeepSeek) is **real** — every run of the DeepSeek
+set scored below the Claude figure — but it is **unresolvable at this sample size**: with
+n=24, a ~3.7-question delta sits inside the combined sampling noise, and no honest claim
+can say how much of the drop is model quality versus noise. Publishing both intervals is
+the point; a single headline "12/24 vs 15/24" would overstate the precision the data has.
+
+**The failure mode is increased abstention, not fabrication or inversion.** There were
+**zero NOT_FOUND regressions** (no question the evidence cannot answer came back
+ANSWERED) and **zero polarity inversions** (no affirmed/denied claim came back as its
+opposite) across all three runs. What moved is how often the model declined to answer:
+DeepSeek answers only 3 of 24 questions consistently (`BCR-08.1`, `CEK-08.1`, and
+`ADV-02`), abstaining on the other 21 in every run — 12 answerable questions it should
+have answered plus the 9 correctly-abstained NOT_FOUND rows. That is a large jump from
+the Claude baseline, which abstained on 7 answerable rows (and 2 wrong-answered). The
+abstention is the *safe* failure mode by design — a row left as `NOT FOUND` still goes
+to a human reviewer, who answers it from the evidence, whereas a fabricated claim or an
+inverted polarity would ship a wrong statement to a prospective customer if the
+reviewer trusted it. The measured trade is coverage for the same safety properties:
+nothing the tool said was wrong in a dangerous direction; it just said "I don't know"
+far more often. That is precisely why the structural-match drop (15 → 11.3) is only
+~3.7 questions despite 12 answerable rows turning to abstention: the abstentions still
+count against the score, but they are the failure mode the product was designed to fail
+in, not the one that hurts a customer.
+
+**Three questions were unstable across runs at temperature 0.** `ADV-02`,
+`BCR-08.1`, and `CEK-08.1` produced different answer text across the three runs
+(different wording; in `ADV-02`'s case a different polarity/confidence too). Only
+`ADV-02` flipped the structural verdict. Temperature 0 does not guarantee determinism
+with MoE routing: greedy decoding picks the most-likely token per position, but
+`deepseek-v4-flash` is a mixture-of-experts model whose routing can vary between
+requests, so even temperature 0 leaves run-to-run variance that must be measured rather
+than assumed away. This is exactly why the eval is run with `--repeats 3` and reported
+as a range plus an interval, not a single number.
+
+**Cost, now measured.** The three runs recorded real usage: ~36.4k input / ~17k output
+tokens per run on average → **~$0.02 / run** at the default DeepSeek rate card (off-peak),
+matching the README's earlier dry-run estimate. (The measured figure is real usage, not
+the Claude-BPE dry-run tokenizer estimate — see the tokenizer caveat below.)
 
 ## Historical baseline: Claude (`claude-sonnet-5`) — superseded 2026-08-18
 
