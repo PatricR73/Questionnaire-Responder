@@ -27,6 +27,22 @@ covers both.
   Ollama-only "format" key is dropped — a strict hosted API can 400 on it), and
   the prompt carries the literal word "json" that DeepSeek's JSON mode requires.
 
+Operational guarantees are the SAME as the Anthropic path, expressed over the
+OpenAI-compatible wire protocol:
+- Truncation: finish_reason="length" (the transport's stop_reason="max_tokens")
+  is detected BEFORE parsing and retried once at a higher limit, then fails the
+  row with AnswerTruncatedError — never misdiagnosed as malformed and retried
+  at the same limit.
+- Fail-fast: FATAL HTTP statuses (401 bad key, 403 permission, 404 wrong model,
+  400 bad request, 402 out of balance) raise immediately with no retry ladder,
+  and the pipeline's provider-agnostic _is_fatal_error aborts the run on them —
+  a bad key or wrong model name stops in the first ten seconds on this path too.
+- Cache accounting: DeepSeek does automatic context caching and reports
+  prompt_cache_hit_tokens / prompt_cache_miss_tokens, mapped to
+  cache_read_input_tokens / cache_creation_input_tokens so the run summary's
+  cache economics are real (Anthropic's cache_control is opt-in and does not
+  apply here; Ollama/vLLM report no cache fields).
+
 **What is true ONLY of a genuinely local endpoint** (base_url on loopback or a
 private address — e.g. Ollama/vLLM/llama.cpp on your machine or LAN):
 
@@ -63,6 +79,7 @@ from src.answer.generate import (
     RETRY_JITTER_SECONDS,
     RETRY_MAX_DELAY_SECONDS,
     SYSTEM_PROMPT,
+    AnswerTruncatedError,
     MalformedAnswerError,
     _build_user_message,
 )
@@ -71,6 +88,13 @@ from src.retrieval.hybrid_search import RetrievedChunk
 DEFAULT_BASE_URL = "http://localhost:11434/v1"  # Ollama's OpenAI-compatible endpoint
 DEFAULT_MODEL = "qwen2.5:7b-instruct"
 REQUEST_TIMEOUT_SECONDS = 120.0  # local models are slower than hosted APIs; do not time out a 7B on a laptop
+
+# HTTP statuses from an OpenAI-compatible endpoint that fail EVERY row
+# identically and are never worth a per-row retry ladder — the wire equivalents
+# of the anthropic FATAL classes in src/pipeline.py: 401 bad key, 403
+# permission, 404 wrong model/endpoint, 400 schema-rejecting request, 402
+# insufficient balance. 429 and 5xx stay transient (retried with backoff).
+FATAL_HTTP_STATUSES = (400, 401, 402, 403, 404)
 
 # Hosted OpenAI-compatible APIs (DeepSeek et al.) require the literal word "json"
 # in the prompt for JSON mode. SYSTEM_PROMPT — shared with the Anthropic path and
@@ -124,15 +148,23 @@ def _is_local_address(base_url: str) -> bool:
     return any(ip.is_loopback or ip.is_private or ip.is_link_local for ip in candidates)
 
 
-def _usage_from_response(response_json: dict) -> tuple[int, int]:
-    """(input_tokens, output_tokens) from either the OpenAI usage shape
-    (prompt_tokens/completion_tokens — vLLM, llama.cpp server) or Ollama's
-    (prompt_eval_count/eval_count). Local endpoints have no prompt-cache
-    accounting, so cache fields stay 0."""
+def _usage_from_response(response_json: dict) -> tuple[int, int, int, int]:
+    """(input, output, cache_read_input, cache_creation_input) from the OpenAI
+    usage shape (prompt_tokens/completion_tokens — vLLM, llama.cpp server, DeepSeek)
+    or Ollama's (prompt_eval_count/eval_count).
+
+    Cache accounting: Anthropic's prompt caching is opt-in via cache_control;
+    DeepSeek does AUTOMATIC context caching and reports prompt_cache_hit_tokens /
+    prompt_cache_miss_tokens in the same usage object — mapped here to
+    cache_read_input_tokens / cache_creation_input_tokens so the run summary's
+    cache economics are real for the default provider, not zeros. Ollama/vLLM
+    report no cache fields; those stay 0."""
     usage = response_json.get("usage") or {}
     in_tok = usage.get("prompt_tokens") or usage.get("prompt_eval_count") or 0
     out_tok = usage.get("completion_tokens") or usage.get("eval_count") or 0
-    return int(in_tok), int(out_tok)
+    cache_read = usage.get("prompt_cache_hit_tokens") or 0
+    cache_creation = usage.get("prompt_cache_miss_tokens") or 0
+    return int(in_tok), int(out_tok), int(cache_read), int(cache_creation)
 
 
 class LocalAnswerer(Answerer):
@@ -197,18 +229,43 @@ class LocalAnswerer(Answerer):
         return response.json()
 
     def _call_with_retries(self, user_content: str, *, max_tokens: int = 1024) -> dict:
-        """Full response dict, retrying HTTP errors with exponential backoff + jitter;
-        parse errors propagate (they get one corrective retry in answer_question)."""
+        """Full response dict, retrying TRANSIENT HTTP errors (429, 5xx,
+        connection) with exponential backoff + jitter; FATAL statuses (401/403/
+        404/400/402 — bad key, permission, wrong model, bad request, out of
+        balance) raise immediately without burning the retry budget: they fail
+        every row identically and the pipeline's fail-fast (_is_fatal_error)
+        aborts the run on them. Parse errors propagate (one corrective retry in
+        _answer_call)."""
         attempt = 0
         while True:
             try:
                 return self._post_chat(user_content, max_tokens=max_tokens)
+            except httpx.HTTPStatusError as exc:
+                if exc.response.status_code in FATAL_HTTP_STATUSES:
+                    raise  # fail fast — the pipeline aborts on this
+                if attempt >= MAX_RETRIES:
+                    raise
+                delay = min(RETRY_BASE_DELAY_SECONDS * (2**attempt), RETRY_MAX_DELAY_SECONDS)
+                time.sleep(delay + RETRY_JITTER_SECONDS)
+                attempt += 1
             except httpx.HTTPError:
                 if attempt >= MAX_RETRIES:
                     raise
                 delay = min(RETRY_BASE_DELAY_SECONDS * (2**attempt), RETRY_MAX_DELAY_SECONDS)
                 time.sleep(delay + RETRY_JITTER_SECONDS)
                 attempt += 1
+
+    @staticmethod
+    def _finish_reason_length(response_json: dict) -> bool:
+        """True when the model hit the generation limit — the OpenAI-compatible
+        expression of the Anthropic stop_reason="max_tokens". OpenAI-compatible
+        responses carry finish_reason (not stop_reason); reading the wrong field
+        would let a truncated response be misdiagnosed as malformed and retried
+        at the SAME limit, truncating again."""
+        try:
+            return response_json["choices"][0].get("finish_reason") == "length"
+        except (KeyError, IndexError, TypeError):
+            return False
 
     @staticmethod
     def _parse_payload(response_json: dict) -> dict:
@@ -267,22 +324,33 @@ class LocalAnswerer(Answerer):
             raise MalformedAnswerError("Local response violates the answer schema: " + "; ".join(violations))
         return payload
 
-    def _answer_call(self, user_message: str) -> tuple[dict, int, int]:
-        """(validated payload, input_tokens, output_tokens) with one corrective
-        retry on malformed output — same discipline as the Anthropic path."""
-        response_json = self._call_with_retries(user_message)
-        in_tok, out_tok = _usage_from_response(response_json)
+    def _answer_call(self, user_message: str, *, max_tokens: int = 1024) -> tuple[dict, int, int, int, int]:
+        """(validated payload, in, out, cache_read, cache_creation) with the same
+        two retry paths as the Anthropic generation path:
+        - truncation (finish_reason="length" — the OpenAI-compatible expression of
+          stop_reason="max_tokens"): retry ONCE at a higher limit, then fail the
+          row with AnswerTruncatedError;
+        - malformed output: one corrective retry, then MalformedAnswerError.
+        """
+        first = self._call_with_retries(user_message, max_tokens=max_tokens)
+        in1, out1, cr1, cc1 = _usage_from_response(first)
+        if self._finish_reason_length(first):
+            retry = self._call_with_retries(user_message, max_tokens=max_tokens * 2)
+            in2, out2, cr2, cc2 = _usage_from_response(retry)
+            if self._finish_reason_length(retry):
+                raise AnswerTruncatedError(f"Response truncated (finish_reason=length) even at {max_tokens * 2} tokens")
+            return self._parse_payload(retry), in1 + in2, out1 + out2, cr1 + cr2, cc1 + cc2
         try:
-            return self._parse_payload(response_json), in_tok, out_tok
+            return self._parse_payload(first), in1, out1, cr1, cc1
         except (MalformedAnswerError, KeyError, IndexError, json.JSONDecodeError) as first_error:
             corrected = user_message + (
                 "\n\nReturn ONLY a single JSON object with exactly the required keys: "
                 "supported, answer, cited_sentences, vocab_selection, self_confidence, polarity."
             )
-            retry_json = self._call_with_retries(corrected)
-            retry_in, retry_out = _usage_from_response(retry_json)
+            retry_json = self._call_with_retries(corrected, max_tokens=max_tokens)
+            r_in, r_out, r_cr, r_cc = _usage_from_response(retry_json)
             try:
-                return self._parse_payload(retry_json), in_tok + retry_in, out_tok + retry_out
+                return self._parse_payload(retry_json), in1 + r_in, out1 + r_out, cr1 + r_cr, cc1 + r_cc
             except Exception as exc:  # noqa: BLE001 — any failure becomes a row ERROR
                 raise MalformedAnswerError(
                     f"Local model response did not parse after corrective retry: {exc}"
@@ -323,7 +391,7 @@ class LocalAnswerer(Answerer):
         response = self._client.post(f"{self._config.base_url}/chat/completions", json=payload, headers=headers)
         response.raise_for_status()
         data = response.json()
-        in_tok, out_tok = _usage_from_response(data)
+        in_tok, out_tok, _, _ = _usage_from_response(data)
         try:
             content = data["choices"][0]["message"]["content"]
             verdict = json.loads(content)
@@ -351,7 +419,7 @@ class LocalAnswerer(Answerer):
         prior_answers: list[dict] | None = None,
     ) -> AnswerResult:
         user_message = _build_user_message(question, chunks, vocab_values, prior_answers=prior_answers)
-        payload, in_tok, out_tok = self._answer_call(user_message)
+        payload, in_tok, out_tok, cache_read, cache_creation = self._answer_call(user_message)
 
         supported = payload["supported"]
         if not supported or payload["self_confidence"] == "none":
@@ -363,6 +431,8 @@ class LocalAnswerer(Answerer):
                 provider=self.provider_name,
                 input_tokens=in_tok,
                 output_tokens=out_tok,
+                cache_read_input_tokens=cache_read,
+                cache_creation_input_tokens=cache_creation,
             )
 
         # Citation grounding: IDENTICAL to the hosted path — never trust the model.
@@ -404,6 +474,8 @@ class LocalAnswerer(Answerer):
                 provider=self.provider_name,
                 input_tokens=in_tok,
                 output_tokens=out_tok,
+                cache_read_input_tokens=cache_read,
+                cache_creation_input_tokens=cache_creation,
                 entailment_input_tokens=entailment_input_tokens,
                 entailment_output_tokens=entailment_output_tokens,
             )
@@ -426,6 +498,8 @@ class LocalAnswerer(Answerer):
             cited_sentences=payload["cited_sentences"],
             input_tokens=in_tok,
             output_tokens=out_tok,
+            cache_read_input_tokens=cache_read,
+            cache_creation_input_tokens=cache_creation,
             entailment_input_tokens=entailment_input_tokens,
             entailment_output_tokens=entailment_output_tokens,
         )

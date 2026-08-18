@@ -37,6 +37,7 @@ from pathlib import Path
 
 import anthropic
 import click
+import httpx
 import openpyxl
 from openpyxl.styles import Alignment, Font, PatternFill
 
@@ -106,12 +107,29 @@ def _setup_logging(output: Path, verbose: bool, quiet: bool) -> None:
 # seconds. They propagate out of the per-row handler and abort the run — the
 # finally save still writes everything already processed, so no paid-for work is
 # lost. Anything not in this set is treated as transient per-row noise.
-FATAL_ERRORS = (
-    anthropic.AuthenticationError,
-    anthropic.PermissionDeniedError,
-    anthropic.NotFoundError,
-    anthropic.BadRequestError,
-)
+def _is_fatal_error(exc: BaseException) -> bool:
+    """Provider-agnostic fail-fast check: the anthropic auth/schema classes, or
+    an OpenAI-compatible endpoint's wire equivalents (httpx.HTTPStatusError with
+    a FATAL status — 401 bad key, 403 permission, 404 wrong model/endpoint, 400
+    bad request, 402 out of balance). Without the httpx arm, a bad key or wrong
+    model name on the default openai-compatible path would burn the full retry
+    ladder on five rows before the circuit breaker fired — the fail-fast promise
+    (abort in the first ten seconds) silently degraded with the default provider.
+    429 and 5xx stay transient: they are retried, not fatal."""
+    if isinstance(
+        exc,
+        (
+            anthropic.AuthenticationError,
+            anthropic.PermissionDeniedError,
+            anthropic.NotFoundError,
+            anthropic.BadRequestError,
+        ),
+    ):
+        return True
+    from src.answer.local import FATAL_HTTP_STATUSES
+
+    return isinstance(exc, httpx.HTTPStatusError) and exc.response.status_code in FATAL_HTTP_STATUSES
+
 
 # Circuit breaker: N consecutive per-row errors (of any kind) abort the run. A
 # systemic failure that isn't in FATAL_ERRORS — e.g. a network path that breaks for
@@ -930,18 +948,18 @@ def answer(
                         total_cache_creation_tokens += result.cache_creation_input_tokens
                         total_entailment_input_tokens += result.entailment_input_tokens
                         total_entailment_output_tokens += result.entailment_output_tokens
-                except FATAL_ERRORS as exc:
-                    # Wrong key, wrong model, or a schema-rejecting request: the same
-                    # failure for every remaining row. Abort now (finally saves
-                    # everything processed so far) instead of failing 400 rows one at
-                    # a time after a full retry ladder each.
-                    click.echo(f"  row {q.row_index}: FATAL — {type(exc).__name__}: {exc}")
-                    raise click.ClickException(
-                        f"Run aborted on row {q.row_index}: {type(exc).__name__} — this error will "
-                        f"repeat for every row (check the API key, model name, and request schema). "
-                        f"Everything processed so far is saved to {output}."
-                    ) from exc
                 except Exception as exc:
+                    if _is_fatal_error(exc):
+                        # Wrong key, wrong model, or a schema-rejecting request: the same
+                        # failure for every remaining row. Abort now (finally saves
+                        # everything processed so far) instead of failing 400 rows one at
+                        # a time after a full retry ladder each.
+                        click.echo(f"  row {q.row_index}: FATAL — {type(exc).__name__}: {exc}")
+                        raise click.ClickException(
+                            f"Run aborted on row {q.row_index}: {type(exc).__name__} — this error will "
+                            f"repeat for every row (check the API key, model name, and request schema). "
+                            f"Everything processed so far is saved to {output}."
+                        ) from exc
                     consecutive_errors += 1
                     caught_exc = exc
                     # A row that burned API calls and then raised used to report zero
@@ -1148,7 +1166,7 @@ def answer(
         counts["none"],
         counts["error"],
     )
-    if provider == "anthropic" and (total_input_tokens or total_output_tokens):
+    if provider in ("anthropic", "openai-compatible", "local") and (total_input_tokens or total_output_tokens):
         uncached_input = total_input_tokens - total_cache_read_tokens
         # B2: per-question averages only make sense when something was answered —
         # a run where every row came back NOT_FOUND still spends real tokens on

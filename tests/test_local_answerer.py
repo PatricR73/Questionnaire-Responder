@@ -85,9 +85,9 @@ def _answerer(server, api_key=""):
     return LocalAnswerer(LocalConfig(base_url=f"http://{host}:{port}/v1", model="test-model", api_key=api_key))
 
 
-def _openai_response(payload_dict, usage=None):
+def _openai_response(payload_dict, usage=None, finish_reason="stop"):
     return {
-        "choices": [{"message": {"content": json.dumps(payload_dict)}}],
+        "choices": [{"message": {"content": json.dumps(payload_dict)}, "finish_reason": finish_reason}],
         "usage": usage or {"prompt_tokens": 10, "completion_tokens": 5},
     }
 
@@ -357,3 +357,102 @@ def test_local_rejects_invalid_self_confidence_and_polarity():
     with pytest.raises(MalformedAnswerError):
         answerer3.answer_question("Are communications encrypted in transit?", [_chunk()])
     server3.shutdown()
+
+
+def test_local_fatal_status_fails_fast_no_retries():
+    """A 401 (bad key) on the OpenAI-compatible path must raise immediately — one
+    request, no retry ladder — so the pipeline's fail-fast aborts the run in the
+    first ten seconds instead of burning the budget on five rows."""
+    import httpx as httpx_mod
+
+    server = _serve([{"error": "invalid api key"}], status_code=401)
+    answerer = _answerer(server, api_key="sk-bad")
+    with pytest.raises(httpx_mod.HTTPStatusError) as excinfo:
+        answerer.answer_question("Are communications encrypted in transit?", [_chunk()])
+    assert excinfo.value.response.status_code == 401
+    assert len(server.handler_class.captured) == 1  # no retries on a fatal status
+    server.shutdown()
+
+
+def test_pipeline_is_fatal_error_covers_httpx_and_anthropic():
+    """The provider-agnostic fail-fast check must recognize the anthropic classes
+    AND the OpenAI-compatible wire equivalents (httpx 401/404/400), and must NOT
+    treat transient 429/5xx as fatal."""
+    import httpx as httpx_mod
+
+    from src.pipeline import _is_fatal_error
+
+    req = httpx_mod.Request("POST", "http://localhost/v1/chat/completions")
+    assert _is_fatal_error(httpx_mod.HTTPStatusError("x", request=req, response=httpx_mod.Response(401, request=req)))
+    assert _is_fatal_error(httpx_mod.HTTPStatusError("x", request=req, response=httpx_mod.Response(404, request=req)))
+    assert _is_fatal_error(httpx_mod.HTTPStatusError("x", request=req, response=httpx_mod.Response(400, request=req)))
+    assert not _is_fatal_error(
+        httpx_mod.HTTPStatusError("x", request=req, response=httpx_mod.Response(429, request=req))
+    )
+    assert not _is_fatal_error(
+        httpx_mod.HTTPStatusError("x", request=req, response=httpx_mod.Response(503, request=req))
+    )
+
+    import anthropic
+
+    resp = httpx_mod.Response(401, request=req)
+    assert _is_fatal_error(anthropic.AuthenticationError("bad key", response=resp, body={}))
+    assert _is_fatal_error(anthropic.NotFoundError("bad model", response=httpx_mod.Response(404, request=req), body={}))
+    assert not _is_fatal_error(RuntimeError("transient"))
+
+
+def test_local_cache_accounting_from_deepseek_usage():
+    """DeepSeek does automatic context caching and reports prompt_cache_hit_tokens
+    / prompt_cache_miss_tokens; they must populate the run summary's cache fields
+    instead of reporting zeros."""
+    server = _serve(
+        [
+            _openai_response(
+                _payload(),
+                usage={
+                    "prompt_tokens": 10,
+                    "completion_tokens": 5,
+                    "prompt_cache_hit_tokens": 4,
+                    "prompt_cache_miss_tokens": 6,
+                },
+            )
+        ]
+    )
+    answerer = _answerer(server)
+    result = answerer.answer_question("Are communications encrypted in transit?", [_chunk()])
+    assert result.status == AnswerStatus.ANSWERED
+    assert result.cache_read_input_tokens == 4
+    assert result.cache_creation_input_tokens == 6
+    server.shutdown()
+
+
+def test_local_truncation_retries_at_higher_limit():
+    """finish_reason=length (the OpenAI-compatible expression of max_tokens
+    truncation) must trigger the same higher-limit retry the Anthropic path does —
+    not a malformed-output corrective retry at the same limit, which would
+    truncate again."""
+    from src.answer.generate import AnswerTruncatedError
+
+    truncated = _openai_response(
+        {
+            "supported": True,
+            "answer": "partial",
+            "cited_sentences": [],
+            "vocab_selection": None,
+            "self_confidence": "high",
+            "polarity": "affirms",
+        },
+        finish_reason="length",
+    )
+    server = _serve([truncated, _openai_response(_payload())])
+    answerer = _answerer(server)
+    result = answerer.answer_question("Are communications encrypted in transit?", [_chunk()])
+    assert result.status == AnswerStatus.ANSWERED  # corrected by the higher-limit retry
+    assert len(server.handler_class.captured) == 2
+    server.shutdown()
+
+    server2 = _serve([truncated, truncated])
+    answerer2 = _answerer(server2)
+    with pytest.raises(AnswerTruncatedError):
+        answerer2.answer_question("Are communications encrypted in transit?", [_chunk()])
+    server2.shutdown()
