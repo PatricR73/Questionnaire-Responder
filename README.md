@@ -328,6 +328,27 @@ This is a second product hiding in the NOT_FOUND rows: the pitch stops being "fi
 this sheet faster" and becomes "find out what you need to write before a customer
 asks."
 
+### 5. Multi-client workspaces
+
+The most likely early adopter is not a single company answering its own
+questionnaires — it is a **consultant, vCISO, or MSP** answering questionnaires for
+several clients. Workspaces keep clients structurally separate:
+
+```
+qresp workspace new acme
+qresp --workspace acme ingest --evidence-dir acme/evidence/
+qresp --workspace acme answer --questionnaire acme/q.xlsx --output acme/filled.xlsx --limit 0
+qresp workspace list
+```
+
+Each workspace is its own data directory (SQLite store, Chroma index, and answer
+library under `out/workspaces/<name>/`), so client A's evidence and approved
+answers can never be retrieved for client B — isolation is enforced at the
+storage layer (a different directory), not by filtering, and the retrieval code
+never sees another workspace's rows. Cross-workspace contamination is
+structurally impossible rather than merely unlikely, and each client keeps a
+clean audit trail when asked to prove where an answer came from.
+
 ## What leaves your machine
 
 This tool's stated buyer is a B2B security team, and the first question that buyer
