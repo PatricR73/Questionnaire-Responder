@@ -134,12 +134,17 @@ There was no prompt bug to fix. The "over-caution" diagnosis was an inference fr
 an aggregate status that collapses two genuinely different causes into one
 observable outcome — and it was wrong.
 
-## The honest current state
+## The honest state so far
 
-Measured on the current 24-question set: **15/24 structural match**, zero confirmed
-textual fabrications on re-examination, 9 rows wrong for named, verified reasons
-(7 honest abstentions + 2 other causes), with a 95% Wilson interval wide enough
-that nobody should mistake 15/24 for a finished instrument. The confidence-threshold
+Measured on the 24-question set (Claude, superseded 2026-08-18): **15/24 structural
+match**, zero confirmed textual fabrications on re-examination, 9 rows wrong for
+named, verified reasons (7 honest abstentions + 2 other causes), with a 95% Wilson
+interval wide enough that nobody should mistake 15/24 for a finished instrument.
+These are the Claude-era measurements: the baseline provider moved to DeepSeek
+(`deepseek-v4-flash`) on 2026-08-18, and the DeepSeek baseline is pending
+re-measurement — see the
+[EVAL.md current-baseline section](../EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measurement-pending).
+The confidence-threshold
 problem remains unsolved at this corpus size. The answer library — the feature that
 makes the second questionnaire cheaper than the first — is built behind a flag,
 with its real-provider delta still to be measured. A fully on-premise provider was

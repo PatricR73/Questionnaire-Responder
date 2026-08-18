@@ -51,6 +51,12 @@ project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Baseline generation provider moved to **DeepSeek** (`deepseek-v4-flash`, the
+  default via `--provider openai-compatible` since 2026-08-18); the DeepSeek
+  baseline is **pending re-measurement**, and every figure carried over from the
+  Claude era (README results table and cost rows, ROI notes, case study) is now
+  labeled as a Claude-era result pending that run — see `EVAL.md`'s current-baseline
+  section.
 - `answers` gains `sheet_name` and `library_candidate` columns; new
   `source_docs` and `reviewed_answers` tables; multi-sheet runs record the
   sheet per row.

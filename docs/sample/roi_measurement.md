@@ -6,14 +6,25 @@ published so the numbers can be audited, re-timed, or improved. The timing rows
 are the AUTHOR's measured speed — a floor, not an analyst benchmark. Re-time with
 a real analyst before using in a proposal.
 
+> **Provider note (2026-08-18):** the API-cost and manual-rows figures below are
+> Claude-era — the dry-run token counts were measured on the Anthropic path, and
+> the 9-of-24 rows come from the superseded Claude baseline. The baseline provider
+> moved to DeepSeek (`deepseek-v4-flash`) on this date, and the DeepSeek baseline
+> is pending re-measurement (see the
+> [EVAL.md current-baseline section](../../EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measurement-pending)).
+
 - Hand-answer pass: 24 questions answered from fixtures/evidence/ alone, in timed
   batches; total wall time ≈ 90 s (author speed).
 - Review pass: 24 rows (question + drafted answer + cited evidence) read and
   decided (approve / edit / flag), timed; total wall time ≈ 6 s (author speed).
-- API cost: measured by `qresp answer --dry-run` over the same 24-question set
-  (≈33k input + ≈27k output tokens, local-tokenizer undercount band) → $0.55–0.60.
+- API cost (Claude-era estimate): measured by `qresp answer --dry-run` over the
+  same 24-question set (≈33k input + ≈27k output tokens, local-tokenizer undercount
+  band) → $0.55–0.60 at the Claude rate card then in force; the same counts at the
+  current default DeepSeek rate card estimate ~$0.02–0.03 (the README's figure).
+  Both are estimates pending the real DeepSeek run.
 - Manual rows: from the published 24-question baseline (EVAL.md) — 9 of 24 rows
-  needed a human (7 honest abstentions + 2 other causes; 0 fabrications).
+  needed a human (7 honest abstentions + 2 other causes; 0 fabrications). This is a
+  Claude-era result; the DeepSeek baseline is pending re-measurement.
 
 ---
 

@@ -8,11 +8,13 @@ you don't have.
 **Who it's for:** B2B companies that get handed CAIQ/VSAQ-style questionnaires by
 prospective enterprise customers and need a fast, honest first draft before a human
 reviews it.
-**What it costs you today:** measured **~$0.02–0.03** of DeepSeek API spend per
-24-question run (≈ **$0.30** for a 300-row SIG Lite), a CLI and (optionally) a local
-Streamlit review screen — no hosting, no account, no subscription. **9 of 24 rows
-still need a human; zero confirmed fabrications.** The measured baseline and every
-named wrong case: see Results below.
+**What it costs you today:** an estimated **~$0.02–0.03** of DeepSeek API spend per
+24-question run (≈ **$0.30** for a 300-row SIG Lite) — a Claude-era dry-run estimate
+at DeepSeek's rate card, pending re-measurement on the real DeepSeek baseline — plus
+a CLI and (optionally) a local Streamlit review screen: no hosting, no account, no
+subscription. **9 of 24 rows still need a human; zero confirmed fabrications** (the
+Claude-era result, pending re-measurement). The baseline and every named wrong case:
+see Results below.
 
 [![Demo video — filling a questionnaire with the review screen](docs/demo-poster.png)](https://github.com/PatricR73/Questionnaire-Responder/releases/download/v0.1.0/demo.webm)
 
@@ -27,10 +29,14 @@ first-pass answers to that spreadsheet automatically, citing exactly where each 
 came from. A person still reviews every answer before it goes out. The tool's job is
 to make the first draft fast and honest, not to remove the human from the loop.
 
-| Measured on the 24-question eval set | |
+| Estimated for DeepSeek — measurement pending | |
 |---|---|
-| API spend | **~$0.02–0.03** per run (≈ **$0.30** for a 300-row SIG Lite) |
-| Rows still needing a human | **9 of 24** (7 honest abstentions + 2 other causes; zero confirmed fabrications) |
+| API spend | **~$0.02–0.03** per run (≈ **$0.30** for a 300-row SIG Lite) — Claude-era dry-run estimate at DeepSeek's rate card, pending re-measurement (see the [EVAL.md current-baseline section](EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measurement-pending)) |
+| Rows still needing a human | **9 of 24** (7 honest abstentions + 2 other causes; zero confirmed fabrications) — Claude-era result, pending re-measurement on DeepSeek (see the [EVAL.md current-baseline section](EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measurement-pending)) |
+
+The baseline provider changed from Claude to DeepSeek on 2026-08-18, and the DeepSeek
+baseline has not yet been re-run — the figures above are carried over from the Claude
+era until that run lands.
 
 Full breakdown and caveats: [What it costs](#what-it-costs-and-what-it-saves) below.
 
@@ -107,16 +113,18 @@ and optionally [hosted read-only](docs/HOSTED-DEMO.md) for evaluation.
 Measured on the committed 24-question eval set (synthetic corpus, n=1 — the author
 as both operator and scorer; the timing numbers are the author's real timed passes,
 which means they are a *floor* for an analyst unfamiliar with the corpus, not a
-benchmark — see the caveats):
+benchmark — see the caveats). The API-spend and human-rows figures below are
+Claude-era and pending re-measurement on the DeepSeek baseline (see the
+[EVAL.md current-baseline section](EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measurement-pending)):
 
-| 24 questions | Measured |
+| 24 questions | Measured / estimated |
 |---|---|
 | Draft all 24 answers by hand, from the same evidence | ~90 s in the author's timed pass (n=1, familiar with the corpus). A cold analyst doing evidence-hunting plus drafting plus hedging per row will take orders of magnitude longer; treat this row as the floor, not the number |
 | Review 24 machine drafts + cited evidence to the same standard | ~6 s in the author's timed pass, same caveat — the structural point is that review is *reading and checking*, not *researching and writing*: every draft carries its verbatim citation, so the reviewer verifies instead of hunts |
-| API spend for the run | **~$0.02–0.03** (the dry-run's measured ~33k input + ~27k output tokens at the default DeepSeek rate card, off-peak; input counted with the Claude BPE — see the tokenizer caveat; re-measured when the DeepSeek baseline lands) |
-| Rows that still needed a human | **9 of 24** — 7 honest abstentions (`NOT FOUND` — evidence genuinely missing) plus 2 other wrong causes per [`EVAL.md`](EVAL.md). Zero confirmed fabrications |
+| API spend for the run | **~$0.02–0.03** — Claude-era dry-run estimate: the dry-run's ~33k input + ~27k output token counts (counted with the Claude BPE — see the tokenizer caveat) priced at the default DeepSeek rate card, off-peak; re-measured when the [DeepSeek baseline lands](EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measurement-pending) |
+| Rows that still needed a human | **9 of 24** — 7 honest abstentions (`NOT FOUND` — evidence genuinely missing) plus 2 other wrong causes per [`EVAL.md`](EVAL.md). Zero confirmed fabrications. Claude-era result, pending re-measurement on DeepSeek (see the [EVAL.md current-baseline section](EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measurement-pending)) |
 
-Extrapolated to a realistic **300-row SIG Lite** at the measured per-row rate
+Extrapolated to a realistic **300-row SIG Lite** at the estimated per-row rate
 (~$0.001/row): **≈ $0.30 of API spend**, plus pipeline wall time and human review of
 the flagged subset (a reviewer reads the NOT_FOUND and low-confidence rows; the
 rest are approved against their citations). That is the number a buyer compares
@@ -125,8 +133,10 @@ against a person spending a week on a spreadsheet — or a $20–40k/year SaaS s
 Caveats, stated because they are cheap and the number is only credible with them:
 n=1; the corpus is synthetic; the operator is the author; the timing rows are the
 author's own speed, published as the measured floor rather than dressed up as an
-analyst benchmark. Re-time the two timing rows with a real analyst before using
-them in a proposal.
+analyst benchmark; and the API-spend figure is a dry-run estimate at the default
+DeepSeek rate card until the real DeepSeek run lands (see the
+[EVAL.md current-baseline section](EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measurement-pending)).
+Re-time the two timing rows with a real analyst before using them in a proposal.
 
 ## Why you can trust it
 
@@ -164,8 +174,8 @@ flowchart LR
 
 ### Results at a glance
 
-The **current baseline** is measured against **DeepSeek (`deepseek-v4-flash`)**, the default
-provider since 2026-08-18 — the run is in progress of being measured; see the [Eval results](#eval-results)
+The **current baseline** is **DeepSeek (`deepseek-v4-flash`)**, the default
+provider since 2026-08-18 — its eval run is pending measurement; see the [Eval results](#eval-results)
 section for the exact command. The table below is the **historical Claude baseline** (`claude-sonnet-5`, superseded
 2026-08-18), kept intact because every tuning pass was measured on it:
 
@@ -198,7 +208,8 @@ guarantee — see the adversarial results above and [`docs/DESIGN.md`](docs/DESI
 for the full reasoning, the enforcement layers, and the review requirements.
 
 The goal: the tool will never assert a security control the organization has not
-documented. The measured status: on the 24-question adversarial subset, **no
+documented. The measured status — Claude-era, pending re-measurement on the DeepSeek
+baseline: on the 24-question adversarial subset, **no
 confirmed textual fabrication** (a claim beyond the cited evidence) has been found
 on re-examination — the two cases first reported as fabrications turned out to be a
 mislabel and a status-mapping defect, and the entailment layer (A1, behind a flag)
@@ -238,7 +249,7 @@ failures without also breaking a question that must stay abstained) — are docu
 in [`TUNING_LOG.md`](fixtures/eval/TUNING_LOG.md), alongside the retrieval-side
 measurements of the P8/P10/P11/P12 changes.
 
-Reproduce the current (DeepSeek) numbers with the command above; the historical Claude numbers
+Run the command above to produce the (currently pending) DeepSeek baseline; the historical Claude numbers
 came from the same command with the Anthropic provider. Full
 methodology, the per-question failure taxonomy, the threshold-tuning data, three real
 bugs the harness caught before it ever scored anything, and two diagnoses that were
