@@ -29,7 +29,8 @@ back to the repo.
 ## Post-deploy checklist
 
 - Set the app URL as the repository homepage (GitHub → repo → About → Website) so
-  the About panel carries the live demo link.
+  the About panel carries the live demo link. Until the deploy happens, the homepage is set to the
+  case study (docs/CASE-STUDY.md) — swap it for the demo URL on deploy.
 - Swap the placeholder "live demo" link in README.md's *Try it in 30 seconds*
   section for the real URL.
 - Add the URL to the repo description if useful ("Try the live demo: <url>").
