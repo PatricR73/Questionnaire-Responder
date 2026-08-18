@@ -264,8 +264,8 @@ def main():
     parser.add_argument(
         "--provider",
         type=str,
-        default="anthropic",
-        help="Generation provider: anthropic (default), stub, or openai-compatible (any OpenAI-compatible "
+        default="openai-compatible",
+        help="Generation provider: openai-compatible (default), anthropic, stub, or local (alias; warns on hosted URLs) — any OpenAI-compatible "
         "endpoint via QRESP_LOCAL_BASE_URL/QRESP_LOCAL_MODEL). The local provider lets the "
         "eval measure the fully-on-premise path (pack 3, C7) against the same scoring.",
     )

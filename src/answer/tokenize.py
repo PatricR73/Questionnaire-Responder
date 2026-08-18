@@ -16,6 +16,13 @@ but a tokenizer one revision behind the model. If exact numbers matter, the
 count_tokens endpoint exists but is an API call, which dry-run deliberately
 avoids.
 
+Provider caveat (2026-08-18): this is Claude's BPE, but the DEFAULT provider is
+now OpenAI-compatible (DeepSeek, deepseek-v4-flash), which has its own tokenizer.
+The dry-run prints this caveat: token counts (and therefore the cost band) are
+estimates for the default provider, and --exact (the Anthropic count_tokens API)
+only applies to --provider anthropic. Swap in the provider's tokenizer or
+re-measure before treating a dry-run number as a bill.
+
 The JSON is fetched once per machine (the URL the old SDK used is dead — verified
 AccessDenied — so the mirror here is the HF-hosted copy of the same file) and
 cached under the temp directory, exactly like the old SDK cached it. No network is

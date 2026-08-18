@@ -122,10 +122,15 @@ class Config:
     entailment_check: bool = False
     entailment_model: str = "claude-sonnet-5"
     # Rate card for the estimated-cost lines (B5): dollars per million tokens.
-    # Moved out of _estimate_cost's source so a price change is a config change,
-    # and serialized into run_config so an old run's cost stays interpretable.
-    input_price_per_mtok: float = 3.0
-    output_price_per_mtok: float = 15.0
+    # Now prices the DEFAULT provider, DeepSeek (deepseek-v4-flash): input
+    # ¥1.5/M (cache miss) and output ¥4.5/M, off-peak, converted to USD at
+    # ~7.1 CNY/USD → $0.21 / $0.63. Caveats: DeepSeek's peak hours roughly
+    # double these, cache-hit input is ~15× cheaper, and a price change or a
+    # different model is a config change (QRESP_INPUT_PRICE_PER_MTOK /
+    # QRESP_OUTPUT_PRICE_PER_MTOK), serialized into run_config so an old run's
+    # cost stays interpretable.
+    input_price_per_mtok: float = 0.21
+    output_price_per_mtok: float = 0.63
 
     def as_dict(self) -> dict:
         return dataclasses.asdict(self)

@@ -47,8 +47,47 @@ every full answer for hand-scoring, and flags a `NOT_FOUND` question coming back
 `ANSWERED` as a regression on its own line, regardless of the total — it does not
 compute usable/needs-editing/wrong itself, since that's a deliberately hand-scored
 judgment call (see the methodology above), not something to automate.
+**Provider change (2026-08-18):** the baseline generation provider moved from Claude to
+DeepSeek. The DeepSeek baseline lives in the current-baseline section below; every Claude
+number that follows is historical and **not comparable** to anything measured after this
+date (see `fixtures/eval/TUNING_LOG.md`'s provider note).
 
-## The number: 60% → 65% usable, honestly — then the adversarial subset changed the picture
+## Current baseline: DeepSeek (`deepseek-v4-flash`) — measurement pending
+
+As of 2026-08-18 the baseline generation provider is **DeepSeek** via the OpenAI-compatible
+transport (`--provider openai-compatible`, the CLI default). The eval runs with
+temperature 0 and `--repeats 3` for stability, exactly like the Claude baseline before it:
+
+```
+export QRESP_LOCAL_BASE_URL=https://api.deepseek.com/v1
+export QRESP_LOCAL_MODEL=deepseek-v4-flash
+export QRESP_LOCAL_API_KEY=sk-...
+python fixtures/eval/run_eval.py --repeats 3
+```
+
+(`deepseek-v4-flash` is DeepSeek's current chat-tier model — the default;
+`deepseek-v4-pro` is the higher-quality, higher-cost option. The run needs a DeepSeek
+API key. This repo's discipline is that published numbers are measured, not aspirational,
+so the table below stays pending until the run lands and is committed.)
+
+| Provider | Model | Structural match | NOT_FOUND regressions | Polarity inversions | 95% Wilson CI |
+|---|---|---|---|---|---|
+| DeepSeek | `deepseek-v4-flash` | pending — run the command above | | | |
+
+Cost estimates for this provider are directional until the run records real usage: the
+dry-run counts tokens with Claude's BPE (`src/answer/tokenize.py`), not DeepSeek's
+tokenizer — the dry-run output states this caveat, and the rate card prices DeepSeek
+(`deepseek-v4-flash`, off-peak) by default.
+
+## Historical baseline: Claude (`claude-sonnet-5`) — superseded 2026-08-18
+
+Every number in the sections below was measured on **Claude (**`claude-sonnet-5`**)**, the
+generation provider before 2026-08-18. They are published intact because they are the measured
+record the TUNING_LOG passes 1–8 were tuned against and the record v0.1.0 anchored its claims to
+— but they are **not comparable** to anything measured after this date, when the baseline
+provider moved to DeepSeek (`deepseek-v4-flash`). Compare new measurements against the
+current-baseline section above.
+### The number: 60% → 65% usable, honestly (Claude) — then the adversarial subset changed the picture
 
 The 60% → 65% numbers below are the historical hand-scored baseline on the original
 20-question set. The corpus has since grown to 24 questions with an adversarial
@@ -112,7 +151,7 @@ as a disqualifying regression regardless of what it does to the total.
   threshold table above). Zero variance across two full re-runs, all 6 `NOT_FOUND`
   questions held both times. This is the one adopted change; 12/0/8 → 13/0/7.
 
-## The threshold finding: distance alone doesn't separate "weak but real" from "absent"
+### The threshold finding: distance alone doesn't separate "weak but real" from "absent"
 
 The obvious next move after the RRF fix was to raise `WEAK_MATCH_DISTANCE` (currently
 `0.3`) to rescue the remaining six threshold-blocked cases. The data says don't:
@@ -138,7 +177,7 @@ threshold edge, specifically to test whether the threshold does anything; it's d
 its job by proving there's no clean separation point in this corpus at this size, not
 by being miscalibrated. Full data in `fixtures/eval/TUNING_LOG.md`.
 
-## What the eval harness caught before it ever scored anything
+### What the eval harness caught before it ever scored anything
 
 Three real bugs, found by building the eval fixtures and running the pipeline for the
 first time against real API calls — none of them related to labeling or scoring at all:
@@ -170,7 +209,7 @@ None of these were prompted by an accuracy score dropping. All three were found 
 the harness demanded looking directly at real output instead of trusting that the
 pipeline was doing what it was designed to do.
 
-## Two diagnoses the harness later overturned by verifying instead of inferring
+### Two diagnoses the harness later overturned by verifying instead of inferring
 
 - **`UEM-13.1`** was first logged as "retrieves cleanly at rank 1" based on something
   being retrieved from the right *document*. Checking the actual retrieved *content*
@@ -201,7 +240,7 @@ label it was being measured against. Both corrections were made because the evid
 said the label was wrong, never because the system disagreed with it — see
 `fixtures/eval/LABELING_GUIDE.md` and the relevant commits for the reasoning.
 
-## Fully-on-premise baseline: --provider openai-compatible
+### On-premise baseline: `qwen2.5:0.5b` (historical side-measurement, 2026-08-18, not Claude)
 
 Pack 3, C7. Some buyers cannot send internal policy text to a third-party API at
 all — regulated industries, government suppliers, and the security teams most

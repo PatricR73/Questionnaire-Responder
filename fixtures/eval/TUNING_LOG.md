@@ -8,6 +8,12 @@ threshold sit where it does") would need. Baseline (pre-tuning): **12 usable / 0
 needs-editing / 8 wrong**, hand-scored against `fixtures/eval/questions.json`, model
 `claude-sonnet-5`.
 
+**Provider note (2026-08-18):** passes 1–8 below were measured on **Claude (`claude-sonnet-5`)**,
+the generation provider before this date. They are Claude measurements and are **not comparable** to
+anything measured after this commit — the baseline provider moved to DeepSeek (`deepseek-v4-flash`)
+on that date (see EVAL.md's current-baseline section). Any pass added after this point measures a
+different model and must say so explicitly.
+
 ## Pass 1 — confidence threshold (`WEAK_MATCH_DISTANCE` in `src/answer/confidence.py`)
 
 **Result: no change made. The data rules out every candidate value.**

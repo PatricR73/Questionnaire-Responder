@@ -8,8 +8,8 @@ you don't have.
 **Who it's for:** B2B companies that get handed CAIQ/VSAQ-style questionnaires by
 prospective enterprise customers and need a fast, honest first draft before a human
 reviews it.
-**What it costs you today:** measured **~$0.55–0.60** of Claude API spend per
-24-question run (≈ **$7** for a 300-row SIG Lite), a CLI and (optionally) a local
+**What it costs you today:** measured **~$0.02–0.03** of DeepSeek API spend per
+24-question run (≈ **$0.30** for a 300-row SIG Lite), a CLI and (optionally) a local
 Streamlit review screen — no hosting, no account, no subscription. **9 of 24 rows
 still need a human; zero confirmed fabrications.** The measured baseline and every
 named wrong case: see Results below.
@@ -29,7 +29,7 @@ to make the first draft fast and honest, not to remove the human from the loop.
 
 | Measured on the 24-question eval set | |
 |---|---|
-| API spend | **~$0.55–0.60** per run (≈ **$7** for a 300-row SIG Lite) |
+| API spend | **~$0.02–0.03** per run (≈ **$0.30** for a 300-row SIG Lite) |
 | Rows still needing a human | **9 of 24** (7 honest abstentions + 2 other causes; zero confirmed fabrications) |
 
 Full breakdown and caveats: [What it costs](#what-it-costs-and-what-it-saves) below.
@@ -113,11 +113,11 @@ benchmark — see the caveats):
 |---|---|
 | Draft all 24 answers by hand, from the same evidence | ~90 s in the author's timed pass (n=1, familiar with the corpus). A cold analyst doing evidence-hunting plus drafting plus hedging per row will take orders of magnitude longer; treat this row as the floor, not the number |
 | Review 24 machine drafts + cited evidence to the same standard | ~6 s in the author's timed pass, same caveat — the structural point is that review is *reading and checking*, not *researching and writing*: every draft carries its verbatim citation, so the reviewer verifies instead of hunts |
-| API spend for the run | **$0.55–0.60** (measured by the pipeline's dry-run: ~33k input + ~27k output tokens at the config rate card; input counted with the local tokenizer's documented 1.4–1.9x undercount band) |
+| API spend for the run | **~$0.02–0.03** (the dry-run's measured ~33k input + ~27k output tokens at the default DeepSeek rate card, off-peak; input counted with the Claude BPE — see the tokenizer caveat; re-measured when the DeepSeek baseline lands) |
 | Rows that still needed a human | **9 of 24** — 7 honest abstentions (`NOT FOUND` — evidence genuinely missing) plus 2 other wrong causes per [`EVAL.md`](EVAL.md). Zero confirmed fabrications |
 
 Extrapolated to a realistic **300-row SIG Lite** at the measured per-row rate
-(~$0.023/row): **≈ $7 of API spend**, plus pipeline wall time and human review of
+(~$0.001/row): **≈ $0.30 of API spend**, plus pipeline wall time and human review of
 the flagged subset (a reviewer reads the NOT_FOUND and low-confidence rows; the
 rest are approved against their citations). That is the number a buyer compares
 against a person spending a week on a spreadsheet — or a $20–40k/year SaaS seat.
@@ -164,10 +164,10 @@ flowchart LR
 
 ### Results at a glance
 
-Measured against 24 security-questionnaire questions with known-correct answers —
-20 real CAIQ v4.0.2 questions plus an adversarial subset of 4 written to stress the
-no-fabrication guarantee (full breakdown and methodology in [`EVAL.md`](EVAL.md),
-every tuning pass in [`TUNING_LOG.md`](fixtures/eval/TUNING_LOG.md)):
+The **current baseline** is measured against **DeepSeek (`deepseek-v4-flash`)**, the default
+provider since 2026-08-18 — the run is in progress of being measured; see the [Eval results](#eval-results)
+section for the exact command. The table below is the **historical Claude baseline** (`claude-sonnet-5`, superseded
+2026-08-18), kept intact because every tuning pass was measured on it:
 
 | Outcome | Count |
 |---|---|
@@ -210,8 +210,19 @@ check exists. Every output requires human review before it goes to a customer.
 
 ## Eval results
 
-The headline number: **15/24 structural match** (status + polarity vs. expected
-label) on the current 24-question set — the 20 original questions plus the
+The **current baseline is DeepSeek (`deepseek-v4-flash`)** via `--provider openai-compatible`
+(the default). It is being measured with temperature 0 and `--repeats 3` — pending the run:
+
+```
+export QRESP_LOCAL_BASE_URL=https://api.deepseek.com/v1 QRESP_LOCAL_MODEL=deepseek-v4-flash
+export QRESP_LOCAL_API_KEY=sk-...
+python fixtures/eval/run_eval.py --repeats 3
+```
+
+The historical **Claude** (`claude-sonnet-5`) numbers below are superseded (2026-08-18) and not
+comparable to anything measured after this date:
+The historical headline number (Claude, superseded 2026-08-18): **15/24 structural
+match** (status + polarity vs. expected label) on the 24-question set — the 20 original questions plus the
 adversarial subset. (The previously published 14/24 counted `ADV-02` as a NOT_FOUND
 regression; it was relabeled `ANSWERED_AFFIRMS` when the evidence was checked, and
 now counts as a match.) The adversarial subset's yield on re-examination: **no
@@ -227,7 +238,8 @@ failures without also breaking a question that must stay abstained) — are docu
 in [`TUNING_LOG.md`](fixtures/eval/TUNING_LOG.md), alongside the retrieval-side
 measurements of the P8/P10/P11/P12 changes.
 
-Reproduce these numbers yourself with `python fixtures/eval/run_eval.py`. Full
+Reproduce the current (DeepSeek) numbers with the command above; the historical Claude numbers
+came from the same command with the Anthropic provider. Full
 methodology, the per-question failure taxonomy, the threshold-tuning data, three real
 bugs the harness caught before it ever scored anything, and two diagnoses that were
 overturned by instrumenting instead of inferring: see **[`EVAL.md`](EVAL.md)**.
@@ -287,7 +299,7 @@ Useful flags:
   hundreds of rows and every row is a paid API call.
 - `--only-row N` — process a single specific sheet row. Useful for targeted checks
   (e.g. re-running one flagged row, or exercising a specific abstention case).
-- `--provider {anthropic,stub}` — see below.
+- `--provider {openai-compatible,anthropic,stub}` — see below; `openai-compatible` is the default.
 - `--stub-fail-row N` — with `--provider stub`, forces that row to raise an error, to
   exercise the per-row failure-isolation path without spending real API calls.
 
@@ -310,8 +322,10 @@ answer, so it's a meaningful test of the plumbing, not just a happy-path mock. S
 output is stamped in the audit log and gets a visible red banner row in the output
 workbook so it can never be mistaken for a real run's output.
 
-`--provider anthropic` (the default) requires `ANTHROPIC_API_KEY` to be set and never
-silently falls back to the stub if the key is missing — it errors instead, since every
+`--provider openai-compatible` (the default) points at your configured OpenAI-compatible
+endpoint — DeepSeek by default (see below), or a local Ollama/vLLM/llama.cpp server.
+`--provider anthropic` requires `ANTHROPIC_API_KEY` and never silently falls back to the
+stub if the key is missing — it errors instead, since every
 row would otherwise fail identically.
 
 ### Running any OpenAI-compatible endpoint: `--provider openai-compatible`
@@ -344,13 +358,12 @@ baseline in [`EVAL.md`](EVAL.md) for the real numbers, which are published rathe
 than hidden. Some buyers will trade quality for boundary; the numbers exist so
 that trade is informed.
 
-The same flag speaks to **hosted OpenAI-compatible endpoints**
-(DeepSeek et al.), which require auth — the key is read ONLY from
+**This is the default provider.** The same flag speaks to **hosted OpenAI-compatible endpoints**
 `QRESP_LOCAL_API_KEY` (or a config file), deliberately never a CLI flag, so it
 never lands in shell history:
 
 ```
-QRESP_LOCAL_BASE_URL=https://api.deepseek.com/v1 QRESP_LOCAL_MODEL=deepseek-chat \
+QRESP_LOCAL_BASE_URL=https://api.deepseek.com/v1 QRESP_LOCAL_MODEL=deepseek-v4-flash 
 QRESP_LOCAL_API_KEY=sk-... \
   qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider openai-compatible
 ```
@@ -365,10 +378,11 @@ configurable rate card (`QRESP_INPUT_PRICE_PER_MTOK` / `QRESP_OUTPUT_PRICE_PER_M
 — set it to the provider's rates, since DeepSeek's are roughly an order of
 magnitude below Claude's and the estimate is only as good as the card.
 
-### Supplying `ANTHROPIC_API_KEY`
+### Configuring the default provider (DeepSeek)
 
-Don't let an agent or script set this for you inside a session where it will end up in
-scrollback or a generated file. Export it yourself:
+The default provider is DeepSeek via `--provider openai-compatible`. The key is read ONLY
+from `QRESP_LOCAL_API_KEY` (or a config file) — deliberately never a CLI flag, so it never
+lands in shell history. Export it yourself:
 
 ```
 export ANTHROPIC_API_KEY=sk-ant-...

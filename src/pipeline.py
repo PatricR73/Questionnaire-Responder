@@ -660,7 +660,7 @@ def _add_stub_banner(ws, last_col: int) -> None:
 @click.option(
     "--provider",
     type=click.Choice(["anthropic", "stub", "openai-compatible", "local"]),
-    default="anthropic",
+    default="openai-compatible",
     show_default=True,
 )
 @click.option(
@@ -1312,6 +1312,11 @@ def _dry_run_cost_estimate(selected: list, total_detected: int, cfg, exact: bool
             + _format_cost(high)
             + " (input-tokenizer undercount band 1.4-1.9x; --exact for a true count)"
         )
+    click.echo("")
+    click.echo("  Caveat: token counting uses the Claude BPE (src/answer/tokenize.py) — the default")
+    click.echo("  provider (OpenAI-compatible / DeepSeek) has its own tokenizer, so these are")
+    click.echo("  estimates; --exact calls the Anthropic count_tokens API and only applies to the")
+    click.echo("  anthropic provider.")
 
 
 def _current_run_config(cfg) -> dict:
@@ -1357,8 +1362,8 @@ def _config_fingerprint(cfg: dict) -> str:
 def _estimate_cost(
     input_tokens: int,
     output_tokens: int,
-    input_price_per_mtok: float = 3.0,
-    output_price_per_mtok: float = 15.0,
+    input_price_per_mtok: float = 0.21,
+    output_price_per_mtok: float = 0.63,
 ) -> float:
     """Rough dollar estimate for the tokens reported this run.
 
