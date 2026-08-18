@@ -111,7 +111,8 @@ def render_row(conn, run_id, row, chunks_by_id: dict):
     if polarity_label:
         confidence_line += f"  ·  {polarity_emoji} **{polarity_label}**"
 
-    header = f"{confidence_line} — Row {row['row_index']}"
+    sheet_label = f" [{row['sheet_name']}]" if row["sheet_name"] else ""
+    header = f"{confidence_line} — Row {row['row_index']}{sheet_label}"
     if reviewed:
         header += f"  ·  ✓ {row['human_action']} ({row['timestamp']})"
     st.markdown(header)
@@ -286,7 +287,7 @@ def main():
         """
         SELECT a.row_index, a.question_text, a.drafted_answer, a.reviewed_answer,
                a.vocab_selection, a.final_confidence, a.self_confidence, a.polarity,
-               a.cited_chunk_ids, a.cited_sentences, a.library_candidate,
+               a.cited_chunk_ids, a.cited_sentences, a.library_candidate, a.sheet_name,
                l.human_action, l.timestamp
         FROM answers a
         LEFT JOIN audit_log l ON l.id = (

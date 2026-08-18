@@ -336,6 +336,64 @@ def gap_report(run_id: int, output_dir: Path | None, top_k: int):
     )
 
 
+
+@cli.command()
+@click.option("--questionnaire", type=click.Path(exists=True, dir_okay=False, path_type=Path), required=True)
+@click.option(
+    "--sheet",
+    type=str,
+    default=None,
+    help="Inspect only this worksheet by name (default: every sheet).",
+)
+def inspect(questionnaire: Path, sheet: str | None):
+    """Show what the pipeline will detect in a questionnaire — free, no API calls.
+
+    Pack 3, C6: column detection is a heuristic, and the commercial failure mode is
+    a prospect's first real file (multi-tab CAIQ, an instructions tab first, a
+    bespoke layout) being mis-detected with no way to verify before spending money.
+    This prints, per sheet: the detected header row, the chosen question/answer/
+    vocab columns WITH their detection scores, the question-row count, and a sample
+    question. Sheets without a detectable header are listed as skipped, so a silent
+    multi-tab miss becomes visible in one command. Combine with --map on the answer
+    command when detection guesses wrong.
+    """
+    import openpyxl
+
+    from src.questionnaire.parse_xlsx import _score_columns, detect_columns, read_questions
+
+    workbook = openpyxl.load_workbook(questionnaire, read_only=False)
+    click.echo(f"Inspecting {questionnaire} ({len(workbook.sheetnames)} sheet(s)) — no API calls, nothing written.")
+    for ws in workbook.worksheets:
+        if sheet is not None and ws.title != sheet:
+            continue
+        click.echo("")
+        click.echo(f"=== Sheet: {ws.title!r} (active={ws.title == workbook.active.title}) ===")
+        try:
+            column_map = detect_columns(ws)
+            scores = _score_columns(ws, column_map.header_row)
+        except ValueError as exc:
+            click.echo(f"  SKIPPED — {exc}")
+            continue
+        click.echo(f"  header row: {column_map.header_row}")
+        for role, (col, score) in scores.items():
+            if col is None:
+                click.echo(f"  {role:8s}: none (best score {score})")
+            else:
+                from openpyxl.utils.cell import get_column_letter
+
+                header_text = ws.cell(row=column_map.header_row, column=col).value
+                click.echo(
+                    f"  {role:8s}: column {get_column_letter(col)} ({col}) score={score} "
+                    f"header={header_text!r}"
+                )
+        questions = read_questions(ws, column_map)
+        click.echo(f"  question rows: {len(questions)}")
+        if questions:
+            click.echo(f"  sample: {questions[0].question_text[:110]}")
+    click.echo("")
+    click.echo("If detection is wrong on a real file, re-run answer with --map question=C,answer=E,vocab=D.")
+
+
 def _aggregate_sub_results(sub_results):
     """Combine per-sub-question results into ONE row-level result (B3).
 
@@ -454,6 +512,20 @@ def _add_stub_banner(ws, last_col: int) -> None:
     default=None,
     help="Process only this single sheet row (overrides --limit); useful for targeted checks.",
 )
+@click.option(
+    "--sheet",
+    type=str,
+    default=None,
+    help="Process only this worksheet by name (default: every sheet with a detectable question/answer header).",
+)
+@click.option(
+    "--map",
+    "map_override",
+    type=str,
+    default=None,
+    help="Override column detection entirely: --map question=C,answer=E,vocab=D (letters or numbers). "
+    "Use after 'qresp inspect' when detection guesses wrong on a real file.",
+)
 @click.option("--provider", type=click.Choice(["anthropic", "stub"]), default="anthropic", show_default=True)
 @click.option(
     "--stub-fail-row",
@@ -498,6 +570,8 @@ def answer(
     output: Path,
     limit: int,
     only_row: int | None,
+    sheet: str | None,
+    map_override: str | None,
     provider: str,
     stub_fail_row: int | None,
     dry_run: bool,
@@ -545,25 +619,50 @@ def answer(
         answerer = StubAnswerer(fail_row=stub_fail_row, weak_match_distance=cfg.weak_match_distance)
 
     workbook = openpyxl.load_workbook(questionnaire)
-    ws = workbook.active
+    from src.questionnaire.parse_xlsx import _parse_column_override, iter_question_sheets
 
-    column_map = detect_columns(ws)
-    all_questions = read_questions(ws, column_map)
+    column_override = _parse_column_override(map_override)
+    if sheet is not None:
+        if sheet not in workbook.sheetnames:
+            raise click.ClickException(
+                f"Workbook has no sheet named {sheet!r} — sheets: {', '.join(workbook.sheetnames)}"
+            )
+        ws = workbook[sheet]
+        column_map = detect_columns(ws, column_override=column_override)
+        sheet_questions = [(sheet, ws, column_map, read_questions(ws, column_map))]
+    else:
+        sheet_questions = [
+            (name, ws, cm, read_questions(ws, cm))
+            for name, ws, cm in iter_question_sheets(workbook, column_override=column_override)
+        ]
+        if not sheet_questions:
+            raise click.ClickException(
+                "No sheet in the workbook has a detectable question/answer header — run "
+                "'qresp inspect --questionnaire FILE' to see what was detected, and use "
+                "--map question=C,answer=E,vocab=D if a real file's headers are unconventional."
+            )
+    total_detected = sum(len(qs) for _, _, _, qs in sheet_questions)
     if only_row is not None:
-        questions = [q for q in all_questions if q.row_index == only_row]
-        if not questions:
+        selected = [(s, ws, cm, q) for s, ws, cm, qs in sheet_questions for q in qs if q.row_index == only_row]
+        if not selected:
             raise click.ClickException(f"Row {only_row} is not a detected question row.")
     else:
-        questions = all_questions if limit == 0 else all_questions[:limit]
-    click.echo(f"Answering {len(questions)} row(s) with provider={provider}.")
-    log.info("answer run starting: %d row(s), provider=%s, dry_run=%s", len(questions), provider, dry_run)
+        flat = [(s, ws, cm, q) for s, ws, cm, qs in sheet_questions for q in qs]
+        selected = flat if limit == 0 else flat[:limit]
+    sheets_note = f" across {len(sheet_questions)} sheet(s)" if len(sheet_questions) > 1 else ""
+    click.echo(f"Answering {len(selected)} row(s) ({total_detected} detected){sheets_note} with provider={provider}.")
+    log.info(
+        "answer run starting: %d row(s) (%d detected across %d sheets), provider=%s, dry_run=%s",
+        len(selected), total_detected, len(sheet_questions), provider, dry_run,
+    )
 
     if dry_run:
-        _dry_run_cost_estimate(questions, all_questions, column_map, cfg, exact=exact)
+        _dry_run_cost_estimate(selected, total_detected, cfg, exact=exact)
         return
 
     if provider == "stub":
-        _add_stub_banner(ws, last_col=max(column_map.question_col, column_map.answer_col, column_map.vocab_col or 0))
+        for _, ws, column_map, _ in sheet_questions:
+            _add_stub_banner(ws, last_col=max(column_map.question_col, column_map.answer_col, column_map.vocab_col or 0))
 
     conn = db.connect()
     vector_store = VectorStore(model_name=cfg.embedding_model)
@@ -604,7 +703,7 @@ def answer(
 
     try:
         with open(jsonl_path, "a") as jsonl_file:
-            for i, q in enumerate(questions, start=1):
+            for i, (sheet_name, ws, column_map, q) in enumerate(selected, start=1):
                 start = time.monotonic()
                 # B3 aggregation contract: split_question is a pass-through today,
                 # but the loop must be written for the day it isn't. Each
@@ -793,6 +892,7 @@ def answer(
                     cited_chunk_ids,
                     polarity=polarity,
                     cited_sentences=cited_sentences,
+                    sheet_name=sheet_name,
                     library_candidate=(
                         {
                             "state": library_state,
@@ -822,6 +922,7 @@ def answer(
                             # into one file with no way to separate them (P20).
                             "run_id": run_id,
                             "ts": datetime.now(UTC).isoformat(),
+                            "sheet": sheet_name,
                             "row_index": q.row_index,
                             "question_text": q.question_text,
                             "final_confidence": final_confidence,
@@ -901,7 +1002,7 @@ def answer(
 OUTPUT_TOKENS_PER_ANSWERED_QUESTION = 1132
 
 
-def _dry_run_cost_estimate(questions: list, all_questions: list, column_map, cfg, exact: bool = False) -> None:
+def _dry_run_cost_estimate(selected: list, total_detected: int, cfg, exact: bool = False) -> None:
     """Everything up to the API call, then stop: column detection and question
     reading already happened; here we run retrieval for every selected row, count
     input tokens — system prompt plus the exact user message generate_answer would
@@ -963,7 +1064,7 @@ def _dry_run_cost_estimate(questions: list, all_questions: list, column_map, cfg
 
         client = anthropic.Anthropic(max_retries=0, timeout=30.0)
         count_method = "count_tokens API (exact)"
-        for q in questions:
+        for sheet_name, ws, column_map, q in selected:
             sub_question = split_question(q.question_text)[0]
             evidence = searcher.search(sub_question, top_k=cfg.top_k)
             user_content = _build_user_message(sub_question, evidence, column_map.vocab_values)
@@ -975,19 +1076,19 @@ def _dry_run_cost_estimate(questions: list, all_questions: list, column_map, cfg
             total_input += resp.input_tokens
             total_retrieved += len(evidence)
     else:
-        for q in questions:
+        for sheet_name, ws, column_map, q in selected:
             sub_question = split_question(q.question_text)[0]
             evidence = searcher.search(sub_question, top_k=cfg.top_k)
             user_content = _build_user_message(sub_question, evidence, column_map.vocab_values)
             total_input += system_tokens + count_tokens(user_content)
             total_retrieved += len(evidence)
 
-    output_estimate = OUTPUT_TOKENS_PER_ANSWERED_QUESTION * len(questions)
+    output_estimate = OUTPUT_TOKENS_PER_ANSWERED_QUESTION * len(selected)
 
     click.echo(
         "Dry run — " + ("no API calls, " if not exact else "one free count_tokens call per row, ") + "nothing written:"
     )
-    click.echo("  rows detected: " + str(len(all_questions)) + "   rows selected: " + str(len(questions)))
+    click.echo("  rows detected: " + str(total_detected) + "   rows selected: " + str(len(selected)))
     click.echo(
         "  estimated input tokens: "
         + str(total_input)

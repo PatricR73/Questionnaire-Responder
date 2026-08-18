@@ -124,6 +124,9 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
         # recorded so the review UI can show why a row was marked, and the eval can
         # measure the library's effect.
         "ALTER TABLE answers ADD COLUMN library_candidate TEXT",
+        # Multi-sheet workbooks (pack 3, C6): rows from different sheets of one
+        # questionnaire share a run; the sheet name keeps them distinguishable.
+        "ALTER TABLE answers ADD COLUMN sheet_name TEXT",
     ):
         try:
             conn.execute(statement)
@@ -164,11 +167,12 @@ def record_answer(
     polarity: str | None = None,
     cited_sentences: list[str] | None = None,
     library_candidate: dict | None = None,
+    sheet_name: str | None = None,
 ) -> None:
     conn.execute(
         "INSERT INTO answers (run_id, row_index, question_text, sub_question_text, drafted_answer, "
-        "vocab_selection, self_confidence, final_confidence, polarity, cited_chunk_ids, cited_sentences, library_candidate) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "vocab_selection, self_confidence, final_confidence, polarity, cited_chunk_ids, cited_sentences, library_candidate, sheet_name) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         (
             run_id,
             row_index,
@@ -182,6 +186,7 @@ def record_answer(
             json.dumps(cited_chunk_ids),
             json.dumps(cited_sentences or []),
             json.dumps(library_candidate) if library_candidate else None,
+            sheet_name,
         ),
     )
     conn.commit()

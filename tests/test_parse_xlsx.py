@@ -11,7 +11,7 @@ decoys are penalized, and the highest scorer wins.
 import openpyxl
 import pytest
 
-from src.questionnaire.parse_xlsx import detect_columns, read_questions
+from src.questionnaire.parse_xlsx import detect_columns, read_questions, iter_question_sheets
 
 
 def _sheet(headers, *, header_row=1, extra_rows=None):
@@ -103,3 +103,69 @@ def test_missing_header_row_raises():
     _write_row(ws, 1, ["Just some", "random content"])
     with pytest.raises(ValueError, match="header row"):
         detect_columns(ws)
+
+
+def test_multi_sheet_workbook_with_instructions_first(tmp_path):
+    """Pack 3, C6: the most likely first-contact failure — a workbook whose ACTIVE
+    (first) tab is an instructions sheet and whose questions live on a later tab.
+    workbook.active used to silently ignore everything but the first tab."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    instructions = wb.active
+    instructions.title = "Instructions"
+    instructions["A1"] = "How to use this questionnaire"
+    instructions["A2"] = "Answer every row. Upload the completed file."
+    qa = wb.create_sheet("Questionnaire")
+    qa["A1"] = "Control ID"
+    qa["B1"] = "Question"
+    qa["C1"] = "Answer"
+    qa["A2"] = "BCR-01.1"
+    qa["B2"] = "Is cloud data periodically backed up?"
+    qa["A3"] = "IAM-02.2"
+    qa["B3"] = "Are access reviews automated?"
+    path = tmp_path / "multi.xlsx"
+    wb.save(path)
+
+    workbook = openpyxl.load_workbook(path)
+    assert workbook.active.title == "Instructions", "fixture must put instructions first"
+
+    sheets = iter_question_sheets(workbook)
+    assert [name for name, _, _ in sheets] == ["Questionnaire"]
+    name, ws, column_map = sheets[0]
+    questions = read_questions(ws, column_map)
+    assert len(questions) == 2
+    assert column_map.question_col == 2 and column_map.answer_col == 3
+
+
+def test_column_override_map(tmp_path):
+    """--map must override detection entirely: a sheet whose headers are
+    unconventional is a dead end without the override."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "Custom"
+    ws["A1"] = "Control ID"
+    ws["B1"] = "Requirement"
+    ws["D1"] = "Response"
+    ws["A2"] = "CTL-1"
+    ws["B2"] = "Do you encrypt data at rest?"
+    ws["D2"] = ""
+    path = tmp_path / "custom.xlsx"
+    wb.save(path)
+
+    workbook = openpyxl.load_workbook(path)
+    column_map = detect_columns(workbook.active, column_override={"question": 2, "answer": 4})
+    assert column_map.question_col == 2
+    assert column_map.answer_col == 4
+
+    from src.questionnaire.parse_xlsx import _parse_column_override
+
+    parsed = _parse_column_override("question=B,answer=D")
+    assert parsed == {"question": 2, "answer": 4}
+    assert _parse_column_override("question=2,answer=4,vocab=5")["vocab"] == 5
+    import pytest
+
+    with pytest.raises(ValueError):
+        _parse_column_override("qustion=B,answer=D")
