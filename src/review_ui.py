@@ -60,6 +60,28 @@ READ_ONLY = os.environ.get("QRESP_REVIEW_READ_ONLY", "").strip().lower() in ("1"
 
 st.set_page_config(page_title="Questionnaire review", layout="wide")
 
+# C11: the review UI serves a database of internal policy text; binding it to
+# anything but localhost should be a loud, explicit decision. Streamlit's default
+# is localhost, so this only fires when someone widened it (e.g. for a LAN
+# review session or the Docker demo) — and QRESP_ALLOW_REMOTE_UI is the
+# acknowledged override. A warning banner, not a hard block: there are
+# legitimate uses (a container port mapping, a team LAN), but they must not be
+# silent.
+try:
+    _bind_address = st.config.get_option("server.address")
+except Exception:  # noqa: BLE001 — config option may not exist in older streamlit
+    _bind_address = None
+if (
+    _bind_address
+    and _bind_address not in ("localhost", "127.0.0.1", "::1")
+    and not os.environ.get("QRESP_ALLOW_REMOTE_UI")
+):
+    st.warning(
+        f"This review screen is bound to {_bind_address} — it serves internal policy text. "
+        "Bind to localhost (streamlit run src/review_ui.py --server.address=127.0.0.1) or set "
+        "QRESP_ALLOW_REMOTE_UI=1 to acknowledge the exposure. See docs/SECURITY-POSTURE.md."
+    )
+
 
 def get_conn():
     """A fresh connection every call, deliberately not cached across Streamlit

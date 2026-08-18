@@ -481,6 +481,43 @@ def serve(port: int, host: str):
     uvicorn.run(app, host=host, port=port)
 
 
+
+@cli.command()
+@click.option("--yes", is_flag=True, help="Skip the confirmation prompt (non-interactive use).")
+def purge(yes: bool):
+    """Delete this workspace's store: SQLite store.db and the Chroma index (pack 3, C11).
+
+    Retention answer a security team will ask for: how do we purge? This deletes
+    the resolved data directory's store artifacts — the chunk text, every drafted
+    answer, the audit trail — for the current workspace (qresp --workspace acme
+    purge) or the default store (qresp purge). Run artifacts under the same data
+    directory are NOT deleted; pass the directory to your normal file deletion
+    process for a complete purge. Requires explicit confirmation unless --yes.
+    """
+    import shutil
+
+    from src.data_dir import data_dir
+
+    target = data_dir()
+    paths = [target / "store.db", target / "chroma"]
+    existing = [p for p in paths if p.exists()]
+    if not existing:
+        click.echo(f"Nothing to purge at {target} (no store.db or chroma/).")
+        return
+    if not yes:
+        click.confirm(
+            f"Delete the store at {target}? This removes {', '.join(p.name for p in existing)} "
+            "— chunk text, answers, and the audit trail. This cannot be undone.",
+            abort=True,
+        )
+    for p in existing:
+        if p.is_dir():
+            shutil.rmtree(p)
+        else:
+            p.unlink()
+    click.echo(f"Purged {', '.join(str(p) for p in existing)}.")
+
+
 def _aggregate_sub_results(sub_results):
     """Combine per-sub-question results into ONE row-level result (B3).
 

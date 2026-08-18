@@ -34,3 +34,7 @@ require the Anthropic API.
 Security fixes land on `main` and are backported to the latest release tag when
 practical. The lockfile (`requirements.lock`) is the reproducibility path for the
 published numbers; dependency updates arrive as Dependabot PRs that CI checks.
+
+## Security posture
+
+For what this tool holds, transmits, retains, and how to purge it — the document a buyer's security team asks for — see [\`docs/SECURITY-POSTURE.md\`](docs/SECURITY-POSTURE.md).

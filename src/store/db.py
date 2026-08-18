@@ -1,6 +1,7 @@
 """SQLite schema and connection helper for chunk metadata, questionnaire runs, and the audit log."""
 
 import json
+import os
 import sqlite3
 from datetime import UTC, datetime
 from pathlib import Path
@@ -85,18 +86,45 @@ CREATE INDEX IF NOT EXISTS idx_reviewed_answers_question ON reviewed_answers(que
 """
 
 
-def connect(db_path: Path | None = None) -> sqlite3.Connection:
+def connect(db_path: Path | None = None, key: str | None = None) -> sqlite3.Connection:
     """Open the store, creating schema if needed.
 
     Defaults to data_dir()/store.db — resolved at call time, not import time, so a
     QRESP_DATA_DIR change (or a foreign cwd) takes effect for the next connect.
     Keeping an explicit-path override is what lets tests and the eval harness point
-    at an isolated database."""
+    at an isolated database.
+
+    Optional at-rest encryption (pack 3, C11): when key is given (or
+    QRESP_STORE_KEY is set), the store is opened with SQLCipher via the
+    sqlcipher3 module and a PRAGMA key, so the file on disk is unreadable without
+    the key — verified: plain sqlite3 and wrong-key opens both fail. The key must
+    be supplied on EVERY open of that store; losing it loses the data. The Chroma
+    vector index is NOT covered (it stores the same chunk text); full at-rest
+    protection for the whole data directory is disk-level encryption — see
+    docs/SECURITY-POSTURE.md."""
     if db_path is None:
         db_path = data_dir() / "store.db"
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(db_path)
-    conn.row_factory = sqlite3.Row
+    if key is None:
+        key = os.environ.get("QRESP_STORE_KEY") or None
+    if key:
+        import sqlcipher3
+
+        # PRAGMA key takes a quoted literal; keys are validated alphanumeric at
+        # the call site (see pipeline.purge / SECURITY-POSTURE.md) so the single
+        # quotes below are safe.
+        conn = sqlcipher3.connect(str(db_path))  # type: ignore[no-untyped-call]
+        conn.execute(f"PRAGMA key = '{key}'")
+        # Verify the key BEFORE running the schema: with a wrong key, sqlcipher3's
+        # executescript raises an unhelpful MemoryError, while this read raises a
+        # clean DatabaseError — callers (and tests) get the right failure.
+        conn.execute("SELECT count(*) FROM sqlite_master").fetchone()
+        # sqlcipher3 cursors require sqlcipher3.Row, not sqlite3.Row — the two
+        # backends are drop-in at the API level but not at the type level.
+        conn.row_factory = sqlcipher3.Row  # type: ignore[assignment]
+    else:
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
     conn.executescript(SCHEMA)
     for statement in (
         "ALTER TABLE audit_log ADD COLUMN provider TEXT",
@@ -131,8 +159,8 @@ def connect(db_path: Path | None = None) -> sqlite3.Connection:
         try:
             conn.execute(statement)
             conn.commit()
-        except sqlite3.OperationalError:
-            pass  # column already exists on a pre-existing dev database
+        except Exception:  # noqa: BLE001 — additive ALTERs: any failure here is "column already exists" on a pre-existing database. Broad on purpose: the sqlcipher3 path raises its own OperationalError class that is NOT a sqlite3.OperationalError subclass, and this loop must be idempotent on both connection types.
+            pass
     return conn
 
 
