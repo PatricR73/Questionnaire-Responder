@@ -30,6 +30,7 @@ loop continues to the next row.
 import json
 import logging
 import os
+import re
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -124,8 +125,32 @@ STUB_BANNER_FONT = Font(bold=True, color="FFFFFF")
 
 
 @click.group()
-def cli():
-    pass
+@click.option(
+    "--workspace",
+    type=str,
+    default=None,
+    help="Namespaced data directory for this command (pack 3, C9): each workspace gets "
+    "its own SQLite store, Chroma index, and answer library under "
+    "<data_dir>/workspaces/<name>/, so a consultant/vCISO/MSP can keep clients "
+    "structurally separate — client A's evidence and approved answers can never be "
+    "retrieved for client B. Isolation is enforced at the storage layer (a different "
+    "data directory per workspace), not by filtering: retrieval code never sees "
+    "another workspace's rows. See 'qresp workspace list' / 'qresp workspace new'.",
+)
+@click.pass_context
+def cli(ctx, workspace):
+    ctx.ensure_object(dict)
+    ctx.obj["workspace"] = workspace
+    if workspace:
+        from src.data_dir import REPO_ROOT
+
+        base = Path(os.environ.get("QRESP_DATA_DIR") or REPO_ROOT / "out")
+        ws_dir = base / "workspaces" / workspace
+        ws_dir.mkdir(parents=True, exist_ok=True)
+        # Set BEFORE any command body runs: db.connect() and VectorStore resolve
+        # data_dir() at call time, so the env var alone is the isolation mechanism.
+        os.environ["QRESP_DATA_DIR"] = str(ws_dir)
+        log.info("workspace %r -> %s", workspace, ws_dir)
 
 
 @cli.command()
@@ -270,6 +295,41 @@ def demo(questionnaire: Path | None, port: int, no_ui: bool, bind: str):
 
 
 
+
+
+@cli.command()
+@click.argument("action", type=click.Choice(["list", "new"]))
+@click.argument("name", type=str, required=False)
+def workspace(action: str, name: str | None):
+    """List workspaces, or create a new one (pack 3, C9).
+
+    Workspaces are namespaced data directories — each has its own SQLite store,
+    Chroma index, and answer library, so cross-client contamination is structurally
+    impossible rather than merely unlikely. The CLI's --workspace option runs any
+    command inside a workspace; this command manages them.
+
+    qresp workspace list          # show every workspace and its data directory
+    qresp workspace new acme      # create the acme workspace
+    """
+    from src.data_dir import REPO_ROOT
+
+    base = Path(os.environ.get("QRESP_DATA_DIR") or REPO_ROOT / "out") / "workspaces"
+    if action == "list":
+        if not base.exists():
+            click.echo("No workspaces yet — create one with 'qresp workspace new <name>'.")
+            return
+        for child in sorted(base.iterdir()):
+            if child.is_dir():
+                click.echo(f"{child.name}  ->  {child}")
+        return
+    if not name:
+        raise click.ClickException("qresp workspace new needs a workspace name.")
+    if not re.fullmatch(r"[a-zA-Z0-9_-]+", name):
+        raise click.ClickException("Workspace names may contain only letters, digits, - and _.")
+    target = base / name
+    target.mkdir(parents=True, exist_ok=True)
+    click.echo(f"Created workspace {name!r} at {target}")
+    click.echo("Use it with: qresp --workspace <name> ingest --evidence-dir ... && qresp --workspace <name> answer ...")
 
 
 @cli.command()
@@ -526,7 +586,7 @@ def _add_stub_banner(ws, last_col: int) -> None:
     help="Override column detection entirely: --map question=C,answer=E,vocab=D (letters or numbers). "
     "Use after 'qresp inspect' when detection guesses wrong on a real file.",
 )
-@click.option("--provider", type=click.Choice(["anthropic", "stub"]), default="anthropic", show_default=True)
+@click.option("--provider", type=click.Choice(["anthropic", "stub", "local"]), default="anthropic", show_default=True)
 @click.option(
     "--stub-fail-row",
     type=int,
@@ -615,6 +675,21 @@ def answer(
                 "ANTHROPIC_API_KEY not set — export it before running with --provider anthropic (every row would fail identically). Use --provider stub if you want to test without a key."
             )
         answerer = AnthropicAnswerer(config=cfg)
+    elif provider == "local" and not dry_run:
+        # C7: fully on-premise generation via an OpenAI-compatible endpoint
+        # (Ollama, vLLM, llama.cpp server). No API key, nothing leaves the host;
+        # the citation grounding and entailment checks run identically (see
+        # src/answer/local.py). Configure with QRESP_LOCAL_BASE_URL /
+        # QRESP_LOCAL_MODEL or a config file.
+        from src.answer.local import LocalAnswerer, LocalConfig
+
+        answerer = LocalAnswerer(
+            LocalConfig(base_url=cfg.local_base_url, model=cfg.local_model),
+            weak_match_distance=cfg.weak_match_distance,
+            entailment_check=cfg.entailment_check,
+            entailment_model=cfg.local_model,
+        )
+        click.echo(f"Using local model {cfg.local_model} at {cfg.local_base_url} — nothing leaves this machine.")
     else:
         answerer = StubAnswerer(fail_row=stub_fail_row, weak_match_distance=cfg.weak_match_distance)
 

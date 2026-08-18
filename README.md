@@ -228,6 +228,31 @@ workbook so it can never be mistaken for a real run's output.
 silently falls back to the stub if the key is missing — it errors instead, since every
 row would otherwise fail identically.
 
+### Running fully on-premise: `--provider local`
+
+Some buyers cannot send internal policy text to a third-party API at all —
+regulated industries, government suppliers, and the security teams most likely to
+be handed these questionnaires. Everything except generation is already local
+(parsing, chunking, embedding, retrieval, the reranker, the review UI), so the
+generation step is swappable too:
+
+```
+ollama pull qwen2.5:7b-instruct
+qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider local
+# or point at any OpenAI-compatible endpoint (Ollama, vLLM, llama.cpp server):
+QRESP_LOCAL_BASE_URL=http://localhost:11434/v1 QRESP_LOCAL_MODEL=qwen2.5:7b-instruct \
+  qresp answer --questionnaire path/to/q.xlsx --output out/filled.xlsx --limit 0 --provider local
+```
+
+With `--provider local` nothing leaves the machine: no API key, no external call.
+The guarantees do not weaken — the same no-fabrication prompt and answer schema,
+the same verbatim citation cross-check, and the same (optional, flag-gated)
+entailment check run against the local model. The honest caveat, measured: a local
+model's answer quality is lower than the hosted Claude path's for a given model
+size — see the local-model baseline in [`EVAL.md`](EVAL.md) for the real numbers,
+which are published rather than hidden. Some buyers will trade quality for
+boundary; the numbers exist so that trade is informed.
+
 ### Supplying `ANTHROPIC_API_KEY`
 
 Don't let an agent or script set this for you inside a session where it will end up in

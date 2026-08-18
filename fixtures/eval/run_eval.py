@@ -88,7 +88,7 @@ _POLARITY_INVERSIONS = {"affirms": "denies", "denies": "affirms"}
 _WILSON_Z = 1.959963984540054
 
 
-def run_pipeline(output_path: Path, config_file: Path | None = None) -> None:
+def run_pipeline(output_path: Path, config_file: Path | None = None, provider: str = "anthropic") -> None:
     cmd = [
         sys.executable,
         "-m",
@@ -100,6 +100,8 @@ def run_pipeline(output_path: Path, config_file: Path | None = None) -> None:
         str(output_path),
         "--limit",
         "0",
+        "--provider",
+        provider,
     ]
     if config_file is not None:
         cmd += ["--config", str(config_file)]
@@ -259,6 +261,14 @@ def main():
         help="TOML file of tuning knobs passed through to the pipeline (see src/config.py) "
         "so a sweep is a loop over config files instead of a series of source edits.",
     )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        default="anthropic",
+        help="Generation provider: anthropic (default), stub, or local (any OpenAI-compatible "
+        "endpoint via QRESP_LOCAL_BASE_URL/QRESP_LOCAL_MODEL). The local provider lets the "
+        "eval measure the fully-on-premise path (pack 3, C7) against the same scoring.",
+    )
     args = parser.parse_args()
     repeats = args.repeats
     if repeats < 1:
@@ -276,7 +286,7 @@ def main():
 
     for i, output_path in enumerate(outputs, start=1):
         print(f"\n=== Repeat {i}/{repeats} (output: {output_path.name}) ===")
-        run_pipeline(output_path, config_file=args.config)
+        run_pipeline(output_path, config_file=args.config, provider=args.provider)
         rows = load_run_rows(output_path)
         matches, not_found_regressions, polarity_inversions = score_run(rows)
         per_run_rows.append(rows)

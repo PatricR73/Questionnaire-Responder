@@ -200,3 +200,47 @@ against the question showed the evidence only covers production-internal traffic
 label it was being measured against. Both corrections were made because the evidence
 said the label was wrong, never because the system disagreed with it — see
 `fixtures/eval/LABELING_GUIDE.md` and the relevant commits for the reasoning.
+
+## Fully-on-premise baseline: --provider local
+
+Pack 3, C7. Some buyers cannot send internal policy text to a third-party API at
+all — regulated industries, government suppliers, and the security teams most
+likely to be handed these questionnaires. Everything except generation is already
+local, and `--provider local` (any OpenAI-compatible endpoint: Ollama, vLLM,
+llama.cpp server) makes the generation step local too, with the same no-fabrication
+prompt, the same answer schema, the same verbatim citation cross-check, and the
+same (flag-gated) entailment check. The honest question is what that costs, so it
+was measured, not assumed:
+
+**Measured 2026-08-18, qwen2.5:0.5b via Ollama, same fixtures, same scoring, one
+run at temperature 0:**
+
+```
+QRESP_LOCAL_MODEL=qwen2.5:0.5b python fixtures/eval/run_eval.py --provider local
+```
+
+| | Anthropic baseline (hosted) | Local qwen2.5:0.5b |
+|---|---|---|
+| Structural match | 15 / 24 (63%) | **9 / 24 (38%)** |
+| NOT_FOUND regressions (must-stay-abstained rows that came back ANSWERED) | 0 | **2 — LOG-12.1, SEF-07.1** |
+| Polarity inversions | 0 | 0 |
+| 95% Wilson CI | — | [0.21, 0.57] |
+
+The headline is not the 9/24 — model size obviously trades quality — it is the two
+**NOT_FOUND regressions**. The no-fabrication goal is a pipeline property, but the
+pipeline's guardrails are only as strong as the model's compliance with the
+"no evidence, no claim" instruction: a 0.5b model ignores it and asserts controls
+the evidence does not document. That is exactly the failure mode this project
+exists to prevent, and it is why the number is published: "fully local" is only a
+real option for a buyer who can run a large enough local model, and this eval —
+one command, same fixtures — is the way to find out whether a given model
+qualifies before trusting it with a customer-facing questionnaire. A 7b+ model
+will land between the two rows of the table; measure it with the same command
+rather than assuming.
+
+Same command, same methodology as the hosted baseline: the harness shells out to
+the real CLI, so the thing measured is the thing a user runs. n=24, single run;
+the structural-match scoring (status/polarity vs expected label) is identical, and
+the hand-scored usable/needs-editing/wrong judgment applies here as it does to the
+hosted numbers.
+

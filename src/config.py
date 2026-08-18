@@ -45,6 +45,8 @@ _FIELD_NAMES = {
     "entailment_model",
     "answer_library",
     "library_semantic_threshold",
+    "local_base_url",
+    "local_model",
     "input_price_per_mtok",
     "output_price_per_mtok",
 }
@@ -91,6 +93,12 @@ class Config:
     # Semantic-equivalence threshold for the library's question matching (see
     # src/answer/library.py). Conservative by default; revisit with measured data.
     library_semantic_threshold: float = 0.75
+    # C7: fully on-premise generation via any OpenAI-compatible endpoint (Ollama,
+    # vLLM, llama.cpp server) — --provider local. Defaults mirror
+    # src/answer/local.py. The answer_library, citation grounding, and entailment
+    # guarantees run identically in local mode; only the model changes.
+    local_base_url: str = "http://localhost:11434/v1"
+    local_model: str = "qwen2.5:7b-instruct"
     # A1: third confidence layer — does the answer FOLLOW from the cited sentences
     # (not just cite them verbatim)? Default OFF so the 14/24 baseline stays
     # reproducible. See src/answer/entailment.py. entailment_model should be the
@@ -188,6 +196,8 @@ def load_config(config_file: Path | None = None, cli_overrides: dict | None = No
         entailment_model=values["entailment_model"],
         answer_library=values["answer_library"],
         library_semantic_threshold=values["library_semantic_threshold"],
+        local_base_url=values["local_base_url"],
+        local_model=values["local_model"],
         input_price_per_mtok=values["input_price_per_mtok"],
         output_price_per_mtok=values["output_price_per_mtok"],
     )
