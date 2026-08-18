@@ -85,5 +85,9 @@ module = [
     "pdfplumber.*",
     "docx",
     "rank_bm25",
+    # src/service.py imports fastapi at module scope but the lint job installs
+    # only the dev extra, not requirements.lock — same ignore rule as the rest.
+    "fastapi",
+    "uvicorn",
 ]
 ignore_missing_imports = true
