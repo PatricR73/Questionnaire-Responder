@@ -76,6 +76,32 @@ flowchart LR
     K --> L[Human review UI]
 ```
 
+### What it actually costs (and what it saves)
+
+Measured on the committed 24-question eval set (synthetic corpus, n=1 — the author
+as both operator and scorer; the timing numbers are the author's real timed passes,
+which means they are a *floor* for an analyst unfamiliar with the corpus, not a
+benchmark — see the caveats):
+
+| 24 questions | Measured |
+|---|---|
+| Draft all 24 answers by hand, from the same evidence | ~90 s in the author's timed pass (n=1, familiar with the corpus). A cold analyst doing evidence-hunting plus drafting plus hedging per row will take orders of magnitude longer; treat this row as the floor, not the number |
+| Review 24 machine drafts + cited evidence to the same standard | ~6 s in the author's timed pass, same caveat — the structural point is that review is *reading and checking*, not *researching and writing*: every draft carries its verbatim citation, so the reviewer verifies instead of hunts |
+| API spend for the run | **$0.55–0.60** (measured by the pipeline's dry-run: ~33k input + ~27k output tokens at the config rate card; input counted with the local tokenizer's documented 1.4–1.9x undercount band) |
+| Rows that still needed a human | **9 of 24** — 7 honest abstentions (`NOT FOUND` — evidence genuinely missing) plus 2 other wrong causes per [`EVAL.md`](EVAL.md). Zero confirmed fabrications |
+
+Extrapolated to a realistic **300-row SIG Lite** at the measured per-row rate
+(~$0.023/row): **≈ $7 of API spend**, plus pipeline wall time and human review of
+the flagged subset (a reviewer reads the NOT_FOUND and low-confidence rows; the
+rest are approved against their citations). That is the number a buyer compares
+against a person spending a week on a spreadsheet — or a $20–40k/year SaaS seat.
+
+Caveats, stated because they are cheap and the number is only credible with them:
+n=1; the corpus is synthetic; the operator is the author; the timing rows are the
+author's own speed, published as the measured floor rather than dressed up as an
+analyst benchmark. Re-time the two timing rows with a real analyst before using
+them in a proposal.
+
 ### Results at a glance
 
 Measured against 24 security-questionnaire questions with known-correct answers —
