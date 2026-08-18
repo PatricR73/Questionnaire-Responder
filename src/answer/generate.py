@@ -15,10 +15,19 @@ from dataclasses import dataclass
 from src.retrieval.hybrid_search import RetrievedChunk
 
 MODEL = "claude-sonnet-5"
-MAX_TOKENS = 1024
+# Defect fix (2026-08-18, DeepSeek baseline): 1024 was a Claude-era budget leftover —
+# a rule-8 conflicting-evidence answer plus several verbatim cited_sentences needed
+# ~2.3-2.9k output tokens on the two AMBIGUOUS_EVIDENCE rows (IAM-15.1 row 20,
+# IAM-14.1 row 21) and truncated at finish_reason=length even after the 2x retry
+# (2048). deepseek-v4-flash supports far more output than Claude was budgeted for, so
+# the default is raised to comfortably fit the longest answers with headroom; the
+# value is config-driven (Config.max_tokens / QRESP_MAX_TOKENS) and the constant is
+# only the default.
+MAX_TOKENS = 4096
 # Truncation is retried once at this higher limit (a rule-8 conflicting-evidence
-# answer plus several verbatim cited_sentences can legitimately exceed 1024); the
-# corrective-suffix retry is NOT used for truncation — same limit, same truncation.
+# answer plus several verbatim cited_sentences can legitimately exceed MAX_TOKENS);
+# the corrective-suffix retry is NOT used for truncation — same limit, same
+# truncation.
 TRUNCATION_RETRY_MAX_TOKENS = 2 * MAX_TOKENS
 REQUEST_TIMEOUT_SECONDS = 30.0
 # MAX_RETRIES is the TOTAL attempt budget per request: 1 initial attempt + 2
@@ -239,7 +248,7 @@ def _check_truncation(response, max_tokens: int) -> None:
         raise AnswerTruncatedError(
             f"Response was truncated by the max_tokens limit ({max_tokens}): stop_reason=max_tokens "
             f"with the output cut off mid-generation. A longer limit is needed (long conflicting-"
-            f"evidence answers plus several verbatim cited_sentences exceed 1024 tokens); retrying "
+            f"evidence answers plus several verbatim cited_sentences exceed the limit); retrying "
             f"with the same limit would truncate again."
         )
 

@@ -274,3 +274,39 @@ seeded from a prior real run, and record the structural-match delta against the
 15/24 baseline. Until that measurement exists, the flag stays OFF. If the delta is
 negative, that is a real result; the library stays off and the candidate-presentation
 is redesigned.
+
+## Defect fix (2026-08-18) — max_tokens raised; recorded as a defect fix, not a tuning pass
+
+**Not a tuning pass:** nothing about the model's answer quality was changed or tuned.
+A fixed defect in the generation budget — the OpenAI-compatible transport was silently
+ignoring the configured max_tokens and truncating long answers.
+
+**Evidence (the two truncated rows, from the pre-fix DeepSeek `--repeats 3` run):**
+
+| Run | Row | Question | Failure |
+|---|---|---|---|
+| 1 | 20 | `IAM-15.1` (AMBIGUOUS_EVIDENCE) | `AnswerTruncatedError: Response truncated (finish_reason=length) even at 2048 tokens` |
+| 2 | 21 | `IAM-14.1` (AMBIGUOUS_EVIDENCE) | `AnswerTruncatedError: Response truncated (finish_reason=length) even at 2048 tokens` |
+
+Both are rule-8 conflicting-evidence questions: the answer must present both claims
+attributed to their sources plus several verbatim cited_sentences, which the model
+legitimately produces at ~2.3–2.9k output tokens (run 3 of the same set completed them
+at 2236–2901 tokens). The pre-fix budget was a Claude-era leftover — `MAX_TOKENS = 1024`
+with a 2x truncation retry at 2048 — and both rows hit `finish_reason=length` even at
+the retried limit. DeepSeek's API supports far more output than Claude was budgeted
+for, so the cap itself was the defect, not the answers.
+
+**What changed (all config-driven, no new hardcoded limit):**
+
+1. `MAX_TOKENS` default raised `1024 → 4096` in `src/answer/generate.py` (the
+   single source of truth `Config.max_tokens` defaults to; the 2x truncation retry
+   follows it to 8192). Overridable per run via `QRESP_MAX_TOKENS` / a TOML config /
+   the CLI, exactly like every other knob.
+2. The OpenAI-compatible transport (`src/answer/local.py`) now receives
+   `Config.max_tokens` through `LocalConfig.max_tokens` and threads it into every
+   request; it used to hardcode `1024` in three method signatures and ignore the
+   configured value entirely — which is why the recorded run_config said
+   `max_tokens: 1024` while the rows truncated at 2048.
+
+**Verification:** rows 20 and 21 complete on all three runs of the post-fix
+`--repeats 3` eval (see EVAL.md current-baseline section).

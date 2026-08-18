@@ -74,6 +74,7 @@ from src.answer.confidence import WEAK_MATCH_DISTANCE, GroundedConfidence, cross
 from src.answer.entailment import EntailmentResult
 from src.answer.generate import (
     MAX_RETRIES,
+    MAX_TOKENS,
     REQUIRED_ANSWER_KEYS,
     RETRY_BASE_DELAY_SECONDS,
     RETRY_JITTER_SECONDS,
@@ -112,6 +113,12 @@ class LocalConfig:
     # header is sent then. Comes from Config.local_api_key (QRESP_LOCAL_API_KEY).
     api_key: str = ""
     temperature: float = 0.0  # deterministic output; eval variance is measured, not assumed away
+    # Generation budget for this endpoint. Defaults to the shared MAX_TOKENS
+    # (config-driven via Config.max_tokens / QRESP_MAX_TOKENS), not a local copy:
+    # a transport with its own hardcoded limit silently ignores the configured
+    # value, which is the truncation defect fixed 2026-08-18 (rows cut off at the
+    # 2x retry of a Claude-era 1024 default).
+    max_tokens: int = MAX_TOKENS
 
 
 def _is_local_address(base_url: str) -> bool:
@@ -190,7 +197,7 @@ class LocalAnswerer(Answerer):
 
     # -- transport -----------------------------------------------------------
 
-    def _post_chat(self, user_content: str, *, model: str | None = None, max_tokens: int = 1024) -> dict:
+    def _post_chat(self, user_content: str, *, model: str | None = None, max_tokens: int = MAX_TOKENS) -> dict:
         """One POST to /chat/completions; raises httpx.HTTPError on transport/status
         failures (retried by the caller with backoff).
 
@@ -228,7 +235,7 @@ class LocalAnswerer(Answerer):
         response.raise_for_status()
         return response.json()
 
-    def _call_with_retries(self, user_content: str, *, max_tokens: int = 1024) -> dict:
+    def _call_with_retries(self, user_content: str, *, max_tokens: int = MAX_TOKENS) -> dict:
         """Full response dict, retrying TRANSIENT HTTP errors (429, 5xx,
         connection) with exponential backoff + jitter; FATAL statuses (401/403/
         404/400/402 — bad key, permission, wrong model, bad request, out of
@@ -324,7 +331,7 @@ class LocalAnswerer(Answerer):
             raise MalformedAnswerError("Local response violates the answer schema: " + "; ".join(violations))
         return payload
 
-    def _answer_call(self, user_message: str, *, max_tokens: int = 1024) -> tuple[dict, int, int, int, int]:
+    def _answer_call(self, user_message: str, *, max_tokens: int = MAX_TOKENS) -> tuple[dict, int, int, int, int]:
         """(validated payload, in, out, cache_read, cache_creation) with the same
         two retry paths as the Anthropic generation path:
         - truncation (finish_reason="length" — the OpenAI-compatible expression of
@@ -419,7 +426,14 @@ class LocalAnswerer(Answerer):
         prior_answers: list[dict] | None = None,
     ) -> AnswerResult:
         user_message = _build_user_message(question, chunks, vocab_values, prior_answers=prior_answers)
-        payload, in_tok, out_tok, cache_read, cache_creation = self._answer_call(user_message)
+        # The generation budget comes from LocalConfig (resolved from Config.max_tokens /
+        # QRESP_MAX_TOKENS by the pipeline), not from a transport default — that is the
+        # defect fix of 2026-08-18: the OpenAI-compatible path used to hardcode 1024
+        # (2x retry 2048) and silently ignore the configured value, truncating long
+        # conflicting-evidence answers.
+        payload, in_tok, out_tok, cache_read, cache_creation = self._answer_call(
+            user_message, max_tokens=self._config.max_tokens
+        )
 
         supported = payload["supported"]
         if not supported or payload["self_confidence"] == "none":
