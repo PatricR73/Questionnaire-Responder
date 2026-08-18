@@ -159,7 +159,17 @@ def ingest(evidence_dir: Path):
     is_flag=True,
     help="Fill the demo workbook and print paths, but do not launch the review screen.",
 )
-def demo(questionnaire: Path | None, port: int, no_ui: bool):
+@click.option(
+    "--bind",
+    type=str,
+    default="127.0.0.1",
+    show_default=True,
+    help="Address the review screen binds to. Keep 127.0.0.1 on a bare machine (the "
+    "UI serves a database of internal policy text); the Docker image uses 0.0.0.0 "
+    "because the container's network namespace is already the boundary there and "
+    "the port must be reachable through the -p mapping.",
+)
+def demo(questionnaire: Path | None, port: int, no_ui: bool, bind: str):
     """One command, no API key, no ingest: a filled workbook plus a running review screen.
 
     Commercial rationale (pack 3, C1): the strongest evidence this project has — the
@@ -247,7 +257,7 @@ def demo(questionnaire: Path | None, port: int, no_ui: bool):
         "run",
         str(Path(review_ui_module.__file__).resolve()),
         "--server.address",
-        "127.0.0.1",
+        bind,
         "--server.port",
         str(port),
         "--server.headless",
@@ -259,6 +269,71 @@ def demo(questionnaire: Path | None, port: int, no_ui: bool):
 
 
 
+
+
+
+@cli.command()
+@click.option("--run-id", type=int, required=True, help="Questionnaire run id (see the review UI sidebar or store.db).")
+@click.option(
+    "--output-dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory for the .md and .xlsx reports (default: out/).",
+)
+@click.option("--top-k", type=int, default=5, show_default=True, help="Retrieved chunks inspected per gap row.")
+def gap_report(run_id: int, output_dir: Path | None, top_k: int):
+    """Turn a run's NOT_FOUND rows into a documentation gap analysis (pack 3, C5).
+
+    Every NOT_FOUND row is individually a blank cell; collectively they are a
+    deliverable — "your policy set does not document: X, Y, Z." For each gap this
+    command re-runs LOCAL retrieval (deterministic, zero API calls, no model beyond
+    the cached local embedding) to distinguish 'nothing found' from 'found something
+    adjacent but not on point', groups gaps by questionnaire domain, and writes a
+    Markdown report plus an XLSX workbook. Low-confidence rows are reported as a
+    second section: documented but weakly supported.
+    """
+    from src.config import load_config
+    from src.data_dir import REPO_ROOT
+    from src.gap_report import build_gap_report, render_markdown, render_xlsx
+
+    conn = db.connect()
+    src_row = conn.execute(
+        "SELECT source_path FROM questionnaire_runs WHERE id = ?", (run_id,)
+    ).fetchone()
+    if src_row is None:
+        raise click.ClickException(f"No questionnaire run with id {run_id}.")
+
+    questionnaire_path = Path(src_row["source_path"])
+    if not questionnaire_path.is_absolute():
+        candidate = REPO_ROOT / questionnaire_path
+        if candidate.exists():
+            questionnaire_path = candidate
+    if not questionnaire_path.exists():
+        click.echo(f"(questionnaire workbook not found at {questionnaire_path} — domains will be Uncategorized)")
+
+    cfg = load_config()
+    vector_store = VectorStore(model_name=cfg.embedding_model)
+    searcher = HybridSearcher(
+        conn,
+        vector_store,
+        vector_weight=cfg.vector_weight,
+        rrf_k=cfg.rrf_k,
+        candidate_pool=cfg.candidate_pool,
+    )
+    report = build_gap_report(conn, run_id, questionnaire_path if questionnaire_path.exists() else Path(""), searcher, top_k=top_k)
+
+    out_dir = output_dir or (REPO_ROOT / "out")
+    out_dir.mkdir(parents=True, exist_ok=True)
+    md_path = out_dir / f"gap_report_run{run_id}.md"
+    xlsx_path = out_dir / f"gap_report_run{run_id}.xlsx"
+    md_path.write_text(render_markdown(report))
+    render_xlsx(report, xlsx_path)
+    click.echo(f"Wrote {md_path}")
+    click.echo(f"Wrote {xlsx_path}")
+    click.echo(
+        f"{report['gap_count']} unanswerable + {report['weak_count']} low-confidence of "
+        f"{report['total_questions']} questions. No API calls were made."
+    )
 
 
 def _aggregate_sub_results(sub_results):

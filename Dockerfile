@@ -34,18 +34,24 @@ RUN pip install --no-cache-dir -e .
 COPY demo_store/ ./demo_store/
 COPY fixtures/ ./fixtures/
 
-# The demo's run data and outputs.
+# The demo's run data and outputs. Created and handed to the responder user while
+# we are still root — the runtime user must be able to write /app/out.
 RUN mkdir -p /app/out && chown -R responder:responder /app/out
 
 # Bake the local embedding model into the image so "docker run" performs no
 # downloads — this is what makes the one-liner truly zero-setup. Pinned to the same
 # revision EVAL.md's numbers were measured against (see src/store/vectorstore.py).
-RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5', revision='5c38ec7c405ec4b44b94cc5a9bb96e735b38267a')"
-
+# The bake must run as the RUNTIME user (responder): Hugging Face caches under the
+# home directory, and a model cached under /root at build time would be invisible
+# (and re-downloaded) at runtime. HF_HUB_OFFLINE is set AFTER the bake — the bake
+# itself IS the download — and makes every later run resolve from cache with no
+# hub connectivity check, so "docker run" is fully offline.
 USER responder
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('BAAI/bge-small-en-v1.5', revision='5c38ec7c405ec4b44b94cc5a9bb96e735b38267a')"
+ENV HF_HUB_OFFLINE=1
 
 EXPOSE 8501
 
 # The one-command demo: fill the committed eval questionnaire with --provider stub,
 # print the output paths, then serve the review screen on :8501.
-CMD ["qresp", "demo"]
+CMD ["qresp", "demo", "--bind", "0.0.0.0"]
