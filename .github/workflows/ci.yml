@@ -30,7 +30,7 @@ jobs:
       # serving a stale cache; restore-keys still finds the old cache when only
       # unrelated files changed.
       - name: Cache HuggingFace models
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: ~/.cache/huggingface
           key: hf-models-${{ runner.os }}-${{ hashFiles('requirements.lock') }}
