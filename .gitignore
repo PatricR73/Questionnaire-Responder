@@ -5,6 +5,8 @@ __pycache__/
 out/
 .claude/
 .env
+.env.*
+!.env.example
 
 # Full extracted CAIQ/VSAQ source pools: CSA's license permits quoting a small
 # selection with attribution, not redistributing the full instrument. Only the
