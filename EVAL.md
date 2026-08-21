@@ -52,6 +52,54 @@ DeepSeek. The DeepSeek baseline lives in the current-baseline section below; eve
 number that follows is historical and **not comparable** to anything measured after this
 date (see `fixtures/eval/TUNING_LOG.md`'s provider note).
 
+## Fresh measurement (2026-08-21): DeepSeek re-run; Anthropic re-run blocked
+
+Both providers were run in one session on 2026-08-21 against the same fixtures, with
+everything held constant except the generation provider: the same command
+(`fixtures/eval/run_eval.py --repeats 3`), the same store, temperature 0,
+`max_tokens=4096`, at commit `4391591` (the current origin/main tip; clean tree).
+Raw outputs are committed under `eval_runs/` with the date and provider in the
+filename; every number below is readable in those files.
+
+**DeepSeek (`deepseek-v4-flash`) - measured:**
+
+```
+export QRESP_LOCAL_BASE_URL=https://api.deepseek.com/v1
+export QRESP_LOCAL_MODEL=deepseek-v4-flash
+export QRESP_LOCAL_API_KEY=sk-...
+python fixtures/eval/run_eval.py --repeats 3
+```
+
+| Provider | Model | Structural match | NOT_FOUND regressions | Polarity inversions | 95% Wilson CI |
+|---|---|---|---|---|---|
+| DeepSeek | `deepseek-v4-flash` | **[11, 13, 10] of 24** (min / mean / max: 10 / 11.3 / 13) | **0** | **0** | **[28%, 65%]** |
+
+Rows answered per run: 3, 4, 3 (so 20-21 of 24 abstained as NOT FOUND; zero ERROR
+rows). One question (`IVS-03.2`) flipped status across runs at temperature 0
+(statuses NOT_FOUND, ANSWERED, NOT_FOUND); every other question was stable 3/3.
+Real token usage per run: 37,832 in / 18,633 out; 36,370 in / 17,943 out; 34,908
+in / 20,336 out - about **$0.02 per run** at the default DeepSeek rate card
+($0.21 / $0.63 per Mtok, off-peak, per `src/config.py`; the config comment notes
+peak hours roughly double this and cache-hit input is ~15x cheaper). Wall clock for
+the three repeats: 2026-08-21T18:11:50Z to 2026-08-21T18:20:55Z (~545 s). Raw
+output: `eval_runs/2026-08-21_deepseek_deepseek-v4-flash.txt`.
+
+**Anthropic (`claude-sonnet-5`) - blocked, no measurement:**
+
+```
+export ANTHROPIC_API_KEY=sk-ant-...
+python fixtures/eval/run_eval.py --repeats 3 --provider anthropic
+```
+
+The key authenticated but the account's credit balance is too low for the Anthropic
+API: repeat 1 aborted on row 2 with HTTP 400 ("Your credit balance is too low to
+access the Anthropic API. Please go to Plans & Billing to upgrade or purchase
+credits."). No rows were scored, so there is no Anthropic number from this session
+and none is published below. The historical Claude figures in the sections below
+remain the Anthropic-era record and are not comparable to the DeepSeek
+measurements. Re-run with the same command once the account has credit; the failed
+attempt is recorded in `eval_runs/2026-08-21_anthropic_claude-sonnet-5.txt`.
+
 ## Current baseline: DeepSeek (`deepseek-v4-flash`) — measured 2026-08-18
 
 As of 2026-08-18 the baseline generation provider is **DeepSeek** via the OpenAI-compatible

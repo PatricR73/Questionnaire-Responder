@@ -8,14 +8,16 @@ you don't have.
 **Who it's for:** B2B companies that get handed CAIQ/VSAQ-style questionnaires by
 prospective enterprise customers and need a fast, honest first draft before a human
 reviews it.
+**Why it doesn't guess:** every answer cites the exact policy passage it came from,
+and when the evidence cannot support an answer the tool says so - a NOT FOUND row -
+instead of fabricating. Measured on the current DeepSeek baseline (three runs,
+2026-08-21): **zero confirmed fabrications**, zero polarity inversions, zero
+NOT_FOUND regressions. Coverage - how many rows the tool can actually answer - is
+measured too, and sits in [Eval results](#eval-results) below, with the raw runs in
+[EVAL.md](EVAL.md).
 **What it costs you today:** **~$0.02** of DeepSeek API spend per 24-question run
-(≈ **$0.30** for a 300-row SIG Lite) — measured on the real DeepSeek baseline, not a
-dry-run estimate — plus a CLI and (optionally) a local Streamlit review screen: no
-hosting, no account, no subscription. **21 of 24 rows abstain honestly (NOT FOUND) on
-the DeepSeek baseline — only 3 of 24 are answered; zero confirmed fabrications, zero
-polarity inversions, zero NOT_FOUND regressions** — the coverage drop from the Claude
-era is real but sits inside the Wilson interval at n=24 (see EVAL.md). The baseline
-and every named wrong case: see Results below.
+(measured on the 2026-08-21 baseline) - plus a CLI and (optionally) a local
+Streamlit review screen: no hosting, no account, no subscription.
 
 [![Demo video — filling a questionnaire with the review screen](docs/demo-poster.png)](https://github.com/PatricR73/Questionnaire-Responder/releases/download/v0.1.0/demo.webm)
 
@@ -29,11 +31,6 @@ reads a company's own security documentation (policies, procedures, plans) and d
 first-pass answers to that spreadsheet automatically, citing exactly where each answer
 came from. A person still reviews every answer before it goes out. The tool's job is
 to make the first draft fast and honest, not to remove the human from the loop.
-
-| Measured on the DeepSeek baseline (2026-08-18) | |
-|---|---|
-| API spend | **~$0.02** per run (≈ **$0.30** for a 300-row SIG Lite) — measured real usage on the DeepSeek baseline (see the [EVAL.md current-baseline section](EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measured-2026-08-18)) |
-| Rows abstaining honestly | **21 of 24** NOT FOUND (only 3 answered) — zero confirmed fabrications, zero polarity inversions, zero NOT_FOUND regressions; coverage is down from the Claude era but the delta is inside the Wilson interval at n=24 (see the [EVAL.md current-baseline section](EVAL.md#current-baseline-deepseek-deepseek-v4-flash--measured-2026-08-18)) |
 
 The baseline provider changed from Claude to DeepSeek on 2026-08-18, and the DeepSeek
 baseline is now measured (see [Eval results](#eval-results)).
@@ -178,19 +175,19 @@ flowchart LR
 ### Results at a glance
 
 The **current baseline** is **DeepSeek (`deepseek-v4-flash`)**, the default
-provider since 2026-08-18, **measured on 2026-08-18** (three runs, all 24 rows
-scored — see [Eval results](#eval-results) for the command and the full
-EVAL.md write-up). The Claude-era table below is kept intact because every tuning
+provider since 2026-08-18, **re-measured on 2026-08-21** (three runs, all 24 rows
+scored - see [Eval results](#eval-results) for the command and the full
+EVAL.md write-up). The Claude-era column below is kept intact because every tuning
 pass was measured on it:
 
-| Outcome | DeepSeek (current, 3-run range) | Claude (historical, superseded) |
+| Outcome | DeepSeek (2026-08-21, 3-run range) | Claude (historical, superseded) |
 |---|---|---|
-| ✅ Structural match (status + polarity vs. expected label) | **11–12 / 24** (mean 11.3) | **15 / 24 (63%)** |
+| ✅ Structural match (status + polarity vs. expected label) | **10-13 / 24** (mean 11.3) | **15 / 24 (63%)** |
 | ⚠️ Confirmed textual fabrication (asserted a control the evidence does not document) | **0 / 24** | **0 / 24** |
-| 🚫 Wrong for another reason (honest abstention, polarity mismatch, status-mapping defect) | 21 / 24 abstentions (NOT FOUND) | 9 / 24 |
+| 🚫 Wrong for another reason (honest abstention, polarity mismatch, status-mapping defect) | 20-21 / 24 abstentions (NOT FOUND) | 9 / 24 |
 
 At n=24 the two providers are **not distinguishable**: DeepSeek's 95% Wilson interval
-([27.9%, 64.9%]) overlaps the Claude baseline's ([42.7%, 78.8%]) across most of its
+([28%, 65%]) overlaps the Claude baseline's ([42.7%, 78.8%]) across most of its
 width. The coverage drop is real — every DeepSeek run scored below the Claude figure
 — but it sits inside the sampling noise at this sample size, and the failure mode is
 **increased honest abstention, not fabrication**: zero NOT_FOUND regressions, zero
@@ -231,6 +228,35 @@ weaker against over-inference from real citations — which is why the A1 entail
 check exists. Every output requires human review before it goes to a customer.
 
 ## Eval results
+
+**DeepSeek (`deepseek-v4-flash`), re-measured on 2026-08-21** via `--provider openai-compatible`
+(the default), temperature 0, `--repeats 3`, at commit `4391591` (clean tree, `max_tokens=4096`):
+
+```
+export QRESP_LOCAL_BASE_URL=https://api.deepseek.com/v1 QRESP_LOCAL_MODEL=deepseek-v4-flash
+export QRESP_LOCAL_API_KEY=sk-...
+python fixtures/eval/run_eval.py --repeats 3
+```
+
+**Result (3 runs): structural match `[11, 13, 10]` of 24 - mean 11.3, range 10-13;
+95% Wilson CI [28%, 65%]; zero NOT_FOUND regressions; zero polarity inversions.**
+Rows answered per run: 3, 4, 3 - the other 20-21 rows abstained honestly as NOT
+FOUND. One question (`IVS-03.2`) flipped status across runs at temperature 0;
+everything else was stable 3/3. Real token usage per run: 37,832 in / 18,633 out,
+36,370 in / 17,943 out, and 34,908 in / 20,336 out - about **$0.02 per run** at the
+default DeepSeek rate card, matching the earlier estimate. Every number above is in
+the committed run artifact
+[`eval_runs/2026-08-21_deepseek_deepseek-v4-flash.txt`](eval_runs/2026-08-21_deepseek_deepseek-v4-flash.txt);
+full write-up: [EVAL.md](EVAL.md).
+
+**The paired Anthropic (`claude-sonnet-5`) re-run could not complete on 2026-08-21:**
+the API key authenticated but the account's credit balance is too low (HTTP 400 on
+row 2 of repeat 1), so no Anthropic rows were scored and no fresh Anthropic number
+exists to publish - none is invented here. The Claude numbers below remain the
+historical Anthropic-era record and are not comparable to the DeepSeek
+measurements. The failed attempt and its exact API error are recorded in
+[`eval_runs/2026-08-21_anthropic_claude-sonnet-5.txt`](eval_runs/2026-08-21_anthropic_claude-sonnet-5.txt);
+re-run with the same command once the account has credit.
 
 The **current baseline is DeepSeek (`deepseek-v4-flash`)** via `--provider openai-compatible`
 (the default), **measured on 2026-08-18 with temperature 0 and `--repeats 3`** at commit
