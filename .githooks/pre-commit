@@ -1,0 +1,18 @@
+#!/bin/sh
+# Pre-commit secret scan: runs gitleaks on staged changes.
+#
+# Why: this repo's public claim is "never assert a control the evidence does not
+# document" - the wrong place to leak a credential. .gitignore guards tracked
+# env files; this hook guards everything else that reaches the index.
+#
+# Requires gitleaks on PATH (preinstalled on the author's machines). Skips
+# silently when gitleaks is missing so the hook never blocks work on a machine
+# without it; install gitleaks or run `gitleaks protect --staged` manually to
+# re-enable the check for a clone.
+#
+# Activate for a clone (one time, local config):
+#   git config core.hooksPath .githooks
+if ! command -v gitleaks >/dev/null 2>&1; then
+  exit 0
+fi
+exec gitleaks protect --staged --redact
