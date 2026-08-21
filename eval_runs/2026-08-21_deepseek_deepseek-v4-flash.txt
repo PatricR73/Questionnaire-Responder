@@ -1,0 +1,453 @@
+# Eval run artifact - DeepSeek baseline
+# Date: 2026-08-21 (UTC)
+# Repository: Questionnaire-Responder (vendor-security-questionnaire-rag)
+# Branch: docs/eval-sync   Commit: 4391591a662a1a38b837af72fd185dde3abb87dd (origin/main tip)
+# Command: python fixtures/eval/run_eval.py --repeats 3 --provider openai-compatible
+# Provider: DeepSeek via OpenAI-compatible transport (--provider openai-compatible)
+# Base URL: https://api.deepseek.com/v1   Model: deepseek-v4-flash
+# Environment: Python 3.12.13, chromadb 1.5.9, sentence-transformers 5.7.0, anthropic 0.122.0
+# Embedding model: BAAI/bge-small-en-v1.5 (pinned), local, cached
+# Temperature: 0 (greedy). max_tokens: 4096 (config default).
+# Rate card for estimated-cost lines: repo default DeepSeek card,
+#   QRESP_INPUT_PRICE_PER_MTOK=0.21 USD, QRESP_OUTPUT_PRICE_PER_MTOK=0.63 USD
+#   (DeepSeek off-peak per src/config.py comment; cache-hit input cheaper; peak roughly doubles).
+# Wall clock: START 2026-08-21T18:11:50Z -> END 2026-08-21T18:20:55Z (~545 s for 3 repeats)
+#
+# Summary (verbatim from harness output below):
+#   Structural match per run: [11, 13, 10]  -> min/mean/max: 10 / 11.3 / 13 out of 24
+#   95% Wilson CI for structural-match proportion (n=24, mean across 3 runs): [0.28, 0.65]
+#   NOT_FOUND regressions per run: [[], [], []]  (zero)
+#   Polarity inversions per run: [[], [], []]    (zero)
+#   Answered / not_found / error per repeat: 3/21/0, 4/20/0, 3/21/0
+#   Tokens in/out per repeat: 37832/18633, 36370/17943, 34908/20336
+#   Estimated cost per repeat: $0.02, $0.019, $0.02 (at the DeepSeek rate card above)
+#   Unstable across runs at temperature 0: IVS-03.2 (statuses NOT_FOUND, ANSWERED, NOT_FOUND);
+#     all other questions stable 3/3.
+#
+# Note: this file is the raw harness stdout, transliterated to ASCII only
+# (pipeline log em dashes -> hyphen, tqdm progress glyphs removed). Every number
+# is byte-identical to the raw run output.
+#
+# ==== RAW HARNESS OUTPUT BELOW ====
+=== ENV: QRESP_LOCAL_BASE_URL=https://api.deepseek.com/v1 QRESP_LOCAL_MODEL=deepseek-v4-flash (key set: yes) ===
+START 2026-08-21T18:11:50Z
+
+=== Repeat 1/3 (output: eval_run_1.xlsx) ===
+Running: /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/.venv/bin/python -m src.pipeline answer --questionnaire /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/fixtures/eval/questionnaire_eval.xlsx --output /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/out/eval_run_1.xlsx --limit 0 --provider openai-compatible
+Using OpenAI-compatible model deepseek-v4-flash at https://api.deepseek.com/v1.
+INFO Detected columns: question=2 answer=3 vocab=None (header row 1) - check before spending money on a run.
+Answering 24 row(s) (24 detected) with provider=openai-compatible.
+INFO answer run starting: 24 row(s) (24 detected across 1 sheets), provider=openai-compatible, dry_run=False
+
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]
+Loading weights: 100%|??????????| 199/199 [00:00<00:00, 13033.11it/s]
+Config: model=claude-sonnet-5 max_tokens=4096 weak_match=0.3 vector_weight=2.0 rrf_k=60 pool=20 top_k=5 chunks=1000/200/1 embed=BAAI/bge-small-en-v1.5 git=4391591a662a1a38b837af72fd185dde3abb87dd
+  row 2: none (5.1s)
+  row 3: low (9.8s)
+  row 4: none (5.1s)
+  row 5: none (11.5s)
+  row 6: none (4.0s)
+  row 7: none (5.3s)
+  row 8: none (11.1s)
+  row 9: high (4.4s)
+  row 10: none (3.5s)
+  row 11: none (9.7s)
+  row 12: none (8.4s)
+  row 13: none (8.0s)
+  row 14: none (3.8s)
+  row 15: none (2.8s)
+  row 16: none (2.2s)
+  row 17: none (2.5s)
+  row 18: none (5.6s)
+  row 19: none (6.6s)
+  row 20: none (15.0s)
+  row 21: none (17.0s)
+  row 22: none (5.1s)
+  row 23: high (19.0s)
+  row 24: none (4.6s)
+  row 25: none (10.3s)
+Wrote /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/out/eval_run_1.xlsx (+ eval_run_1.jsonl). answered=3 flagged_low=1 not_found=21 error=0
+INFO answer run finished: answered=3 flagged_low=1 not_found=21 error=0
+Tokens: 37832 in / 18633 out (avg 12610 in / 6211 out per answered question)
+  of which 12488 uncached in, 25344 cache-read in, 12488 cache-created in
+  estimated cost: $0.02
+
+====================================================================================================
+IVS-03.2   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+BCR-08.1   expected=ANSWERED_AFFIRMS     status=ANSWERED   confidence=low    polarity=partial  match=NO
+  answer: Production databases are backed up hourly with 30-day retention, with backups stored in a separate cloud region. The evidence does not address whether other cloud data is periodically backed up.
+
+IAM-08.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+IAM-13.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+BCR-03.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+SEF-06.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+UEM-13.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+CEK-08.1   expected=ANSWERED_DENIES      status=ANSWERED   confidence=high   polarity=denies   match=yes
+  answer: No. The evidence states that customers do not have the ability to manage their own encryption keys; all key management is performed internally by the security team.
+
+STA-09.1   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+BCR-08.2   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+CEK-01.1   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+SEF-02.1   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+LOG-12.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+A&A-02.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+HRS-01.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+DSP-14.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+BCR-08.3   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+SEF-07.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+IAM-15.1   expected=AMBIGUOUS_EVIDENCE   status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+IAM-14.1   expected=AMBIGUOUS_EVIDENCE   status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+ADV-01     expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+ADV-02     expected=ANSWERED_AFFIRMS     status=ANSWERED   confidence=high   polarity=affirms  match=yes
+  answer: Backups are stored in a separate cloud region from the primary production environment.
+
+ADV-03     expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+ADV-04     expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+====================================================================================================
+NOT_FOUND questions (must all stay NOT_FOUND):
+  LOG-12.1: NOT_FOUND
+  A&A-02.1: NOT_FOUND
+  HRS-01.1: NOT_FOUND
+  DSP-14.1: NOT_FOUND
+  BCR-08.3: NOT_FOUND
+  SEF-07.1: NOT_FOUND
+  ADV-01: NOT_FOUND
+  ADV-03: NOT_FOUND
+  ADV-04: NOT_FOUND
+
+No NOT_FOUND regressions.
+No polarity inversions.
+
+=== Repeat 2/3 (output: eval_run_2.xlsx) ===
+Running: /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/.venv/bin/python -m src.pipeline answer --questionnaire /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/fixtures/eval/questionnaire_eval.xlsx --output /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/out/eval_run_2.xlsx --limit 0 --provider openai-compatible
+Using OpenAI-compatible model deepseek-v4-flash at https://api.deepseek.com/v1.
+INFO Detected columns: question=2 answer=3 vocab=None (header row 1) - check before spending money on a run.
+Answering 24 row(s) (24 detected) with provider=openai-compatible.
+INFO answer run starting: 24 row(s) (24 detected across 1 sheets), provider=openai-compatible, dry_run=False
+
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]
+Loading weights: 100%|??????????| 199/199 [00:00<00:00, 13643.47it/s]
+Config: model=claude-sonnet-5 max_tokens=4096 weak_match=0.3 vector_weight=2.0 rrf_k=60 pool=20 top_k=5 chunks=1000/200/1 embed=BAAI/bge-small-en-v1.5 git=4391591a662a1a38b837af72fd185dde3abb87dd
+  row 2: low (8.8s)
+  row 3: high (2.4s)
+  row 4: none (7.0s)
+  row 5: none (13.4s)
+  row 6: none (3.6s)
+  row 7: none (5.6s)
+  row 8: none (16.0s)
+  row 9: high (5.3s)
+  row 10: none (2.2s)
+  row 11: none (10.6s)
+  row 12: none (12.5s)
+  row 13: none (8.3s)
+  row 14: none (3.2s)
+  row 15: none (2.3s)
+  row 16: none (2.8s)
+  row 17: none (2.0s)
+  row 18: none (3.8s)
+  row 19: none (4.3s)
+  row 20: none (17.6s)
+  row 21: none (8.3s)
+  row 22: none (1.8s)
+  row 23: high (2.9s)
+  row 24: none (4.4s)
+  row 25: none (8.3s)
+Wrote /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/out/eval_run_2.xlsx (+ eval_run_2.jsonl). answered=4 flagged_low=1 not_found=20 error=0
+INFO answer run finished: answered=4 flagged_low=1 not_found=20 error=0
+Tokens: 36370 in / 17943 out (avg 9092 in / 4485 out per answered question)
+  of which 1298 uncached in, 35072 cache-read in, 1298 cache-created in
+  estimated cost: $0.019
+
+====================================================================================================
+IVS-03.2   expected=ANSWERED_PARTIAL     status=ANSWERED   confidence=low    polarity=partial  match=yes
+  answer: Based on the evidence, communications between clients and production services are encrypted in transit using TLS 1.2 or higher, and internal service-to-service traffic within the production VPC is encrypted using mutual TLS. The evidence does not address encryption of communications between environments generally, such as between non-production environments. It also does not state whether the VPN used for remote access to non-production networks encrypts those communications.
+
+BCR-08.1   expected=ANSWERED_AFFIRMS     status=ANSWERED   confidence=high   polarity=affirms  match=yes
+  answer: Yes. Production databases are backed up hourly with 30-day retention, and backups are stored in a separate cloud region from the primary production environment.
+
+IAM-08.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+IAM-13.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+BCR-03.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+SEF-06.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+UEM-13.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+CEK-08.1   expected=ANSWERED_DENIES      status=ANSWERED   confidence=high   polarity=denies   match=yes
+  answer: The evidence states that customers do not have the ability to manage their own encryption keys; all key management is performed internally by the security team. Therefore, the CSP does not provide CSCs with the capacity to manage their own data encryption keys.
+
+STA-09.1   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+BCR-08.2   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+CEK-01.1   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+SEF-02.1   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+LOG-12.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+A&A-02.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+HRS-01.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+DSP-14.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+BCR-08.3   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+SEF-07.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+IAM-15.1   expected=AMBIGUOUS_EVIDENCE   status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+IAM-14.1   expected=AMBIGUOUS_EVIDENCE   status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+ADV-01     expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+ADV-02     expected=ANSWERED_AFFIRMS     status=ANSWERED   confidence=high   polarity=affirms  match=yes
+  answer: Yes. Production database backups are stored in a separate cloud region from the primary production environment.
+
+ADV-03     expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+ADV-04     expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+====================================================================================================
+NOT_FOUND questions (must all stay NOT_FOUND):
+  LOG-12.1: NOT_FOUND
+  A&A-02.1: NOT_FOUND
+  HRS-01.1: NOT_FOUND
+  DSP-14.1: NOT_FOUND
+  BCR-08.3: NOT_FOUND
+  SEF-07.1: NOT_FOUND
+  ADV-01: NOT_FOUND
+  ADV-03: NOT_FOUND
+  ADV-04: NOT_FOUND
+
+No NOT_FOUND regressions.
+No polarity inversions.
+
+=== Repeat 3/3 (output: eval_run_3.xlsx) ===
+Running: /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/.venv/bin/python -m src.pipeline answer --questionnaire /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/fixtures/eval/questionnaire_eval.xlsx --output /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/out/eval_run_3.xlsx --limit 0 --provider openai-compatible
+Using OpenAI-compatible model deepseek-v4-flash at https://api.deepseek.com/v1.
+INFO Detected columns: question=2 answer=3 vocab=None (header row 1) - check before spending money on a run.
+Answering 24 row(s) (24 detected) with provider=openai-compatible.
+INFO answer run starting: 24 row(s) (24 detected across 1 sheets), provider=openai-compatible, dry_run=False
+
+Loading weights:   0%|          | 0/199 [00:00<?, ?it/s]
+Loading weights: 100%|??????????| 199/199 [00:00<00:00, 12441.18it/s]
+Config: model=claude-sonnet-5 max_tokens=4096 weak_match=0.3 vector_weight=2.0 rrf_k=60 pool=20 top_k=5 chunks=1000/200/1 embed=BAAI/bge-small-en-v1.5 git=4391591a662a1a38b837af72fd185dde3abb87dd
+  row 2: none (5.7s)
+  row 3: low (4.8s)
+  row 4: none (5.9s)
+  row 5: none (6.7s)
+  row 6: none (15.3s)
+  row 7: none (6.4s)
+  row 8: none (9.0s)
+  row 9: high (4.3s)
+  row 10: none (3.0s)
+  row 11: none (12.9s)
+  row 12: none (5.7s)
+  row 13: none (18.6s)
+  row 14: none (4.0s)
+  row 15: none (2.8s)
+  row 16: none (4.6s)
+  row 17: none (3.0s)
+  row 18: none (18.3s)
+  row 19: none (7.1s)
+  row 20: none (18.3s)
+  row 21: none (12.2s)
+  row 22: none (1.8s)
+  row 23: low (5.4s)
+  row 24: none (3.1s)
+  row 25: none (8.3s)
+Wrote /home/retrix/Desktop/Questionnaire-Responder/vendor-security-questionnaire-rag/out/eval_run_3.xlsx (+ eval_run_3.jsonl). answered=3 flagged_low=2 not_found=21 error=0
+INFO answer run finished: answered=3 flagged_low=2 not_found=21 error=0
+Tokens: 34908 in / 20336 out (avg 11636 in / 6778 out per answered question)
+  of which 1244 uncached in, 33664 cache-read in, 1244 cache-created in
+  estimated cost: $0.02
+
+====================================================================================================
+IVS-03.2   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+BCR-08.1   expected=ANSWERED_AFFIRMS     status=ANSWERED   confidence=low    polarity=partial  match=NO
+  answer: Evidence states that production databases are backed up hourly with 30-day retention and that backups are stored in a separate cloud region. It does not address whether other types of cloud data are periodically backed up.
+
+IAM-08.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+IAM-13.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+BCR-03.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+SEF-06.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+UEM-13.1   expected=ANSWERED_AFFIRMS     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+CEK-08.1   expected=ANSWERED_DENIES      status=ANSWERED   confidence=high   polarity=denies   match=yes
+  answer: No. The evidence states that customers do not have the ability to manage their own encryption keys; all key management is performed internally by the security team.
+
+STA-09.1   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+BCR-08.2   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+CEK-01.1   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+SEF-02.1   expected=ANSWERED_PARTIAL     status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+LOG-12.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+A&A-02.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+HRS-01.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+DSP-14.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+BCR-08.3   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+SEF-07.1   expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+IAM-15.1   expected=AMBIGUOUS_EVIDENCE   status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+IAM-14.1   expected=AMBIGUOUS_EVIDENCE   status=NOT_FOUND  confidence=none   polarity=None     match=NO
+  answer: (empty)
+
+ADV-01     expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+ADV-02     expected=ANSWERED_AFFIRMS     status=ANSWERED   confidence=low    polarity=partial  match=NO
+  answer: The evidence states that backups are stored in a separate cloud region from the primary production environment. It does not explicitly address whether this constitutes an off-site facility at a geographically separate location.
+
+ADV-03     expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+ADV-04     expected=NOT_FOUND            status=NOT_FOUND  confidence=none   polarity=None     match=yes
+  answer: (empty)
+
+====================================================================================================
+NOT_FOUND questions (must all stay NOT_FOUND):
+  LOG-12.1: NOT_FOUND
+  A&A-02.1: NOT_FOUND
+  HRS-01.1: NOT_FOUND
+  DSP-14.1: NOT_FOUND
+  BCR-08.3: NOT_FOUND
+  SEF-07.1: NOT_FOUND
+  ADV-01: NOT_FOUND
+  ADV-03: NOT_FOUND
+  ADV-04: NOT_FOUND
+
+No NOT_FOUND regressions.
+No polarity inversions.
+
+====================================================================================================
+Per-question stability across 3 runs (modal status / how many runs produced it):
+  IVS-03.2   NOT_FOUND  2/3  <- statuses: ['NOT_FOUND', 'ANSWERED', 'NOT_FOUND']
+  BCR-08.1   ANSWERED   3/3
+  IAM-08.1   NOT_FOUND  3/3
+  IAM-13.1   NOT_FOUND  3/3
+  BCR-03.1   NOT_FOUND  3/3
+  SEF-06.1   NOT_FOUND  3/3
+  UEM-13.1   NOT_FOUND  3/3
+  CEK-08.1   ANSWERED   3/3
+  STA-09.1   NOT_FOUND  3/3
+  BCR-08.2   NOT_FOUND  3/3
+  CEK-01.1   NOT_FOUND  3/3
+  SEF-02.1   NOT_FOUND  3/3
+  LOG-12.1   NOT_FOUND  3/3
+  A&A-02.1   NOT_FOUND  3/3
+  HRS-01.1   NOT_FOUND  3/3
+  DSP-14.1   NOT_FOUND  3/3
+  BCR-08.3   NOT_FOUND  3/3
+  SEF-07.1   NOT_FOUND  3/3
+  IAM-15.1   NOT_FOUND  3/3
+  IAM-14.1   NOT_FOUND  3/3
+  ADV-01     NOT_FOUND  3/3
+  ADV-02     ANSWERED   3/3
+  ADV-03     NOT_FOUND  3/3
+  ADV-04     NOT_FOUND  3/3
+
+====================================================================================================
+Structural match per run: [11, 13, 10]
+NOT_FOUND regressions per run: [[], [], []]
+Polarity inversions per run: [[], [], []]
+min/mean/max across 3 run(s): 10 / 11.3 / 13 out of 24
+95% Wilson CI for structural-match proportion (n=24, mean across 3 run(s)): [0.28, 0.65]
+PIPELINE_EXIT=0
+END 2026-08-21T18:20:55Z
