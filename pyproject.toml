@@ -33,7 +33,7 @@ dependencies = [
 dev = [
     "pytest==9.1.1",
     "ruff==0.16.3",
-    "mypy==1.16.1",
+    "mypy==2.3.1",
     # The SQLCipher tests import sqlcipher3 at module scope, and the lint job
     # installs only this extra — without it mypy can't resolve the import
     # (import-not-found) and CI never exercises the at-rest encryption tests.
